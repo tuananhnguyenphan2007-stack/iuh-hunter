@@ -22,32 +22,57 @@ class DiscordNotifier:
     def set_webhook_url(self, webhook_url: str):
         self.webhook_url = webhook_url.strip()
 
+    def _get_target_urls(self) -> List[str]:
+        if not self.webhook_url:
+            return []
+        urls = [self.webhook_url]
+        # Nếu đang dùng domain gốc của Discord, chuẩn bị sẵn proxy fallback
+        # Giải quyết triệt để lỗi HTTP 429 "global rate limits" do dải IP của Render/Cloud bị Discord chặn
+        if "discord.com" in self.webhook_url:
+            proxy_url = self.webhook_url.replace("discord.com", "webhook.lewisakura.moe")
+            urls.append(proxy_url)
+        elif "discordapp.com" in self.webhook_url:
+            proxy_url = self.webhook_url.replace("discordapp.com", "webhook.lewisakura.moe")
+            urls.append(proxy_url)
+        return urls
+
     def send_raw(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Gửi raw JSON payload đến Discord Webhook"""
+        """Gửi raw JSON payload đến Discord Webhook với tự động dự phòng proxy khi gặp lỗi 429"""
         if not self.webhook_url:
             return {"success": False, "error": "Chưa cấu hình Discord Webhook URL."}
 
-        try:
-            data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(
-                self.webhook_url,
-                data=data,
-                headers={
-                    "Content-Type": "application/json",
-                    "User-Agent": "IUH-Activity-Bot/1.0"
-                },
-                method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=8, context=self.ssl_context) as resp:
-                return {
-                    "success": resp.status in [200, 204],
-                    "status_code": resp.status
-                }
-        except urllib.error.HTTPError as e:
-            err_msg = e.read().decode('utf-8', errors='ignore') if hasattr(e, 'read') else str(e)
-            return {"success": False, "error": f"Lỗi Discord HTTP {e.code}: {err_msg}"}
-        except Exception as e:
-            return {"success": False, "error": f"Lỗi kết nối Discord: {str(e)}"}
+        target_urls = self._get_target_urls()
+        last_error = ""
+
+        for target_url in target_urls:
+            try:
+                data = json.dumps(payload).encode("utf-8")
+                req = urllib.request.Request(
+                    target_url,
+                    data=data,
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "IUH-Activity-Bot/1.0"
+                    },
+                    method="POST"
+                )
+                with urllib.request.urlopen(req, timeout=10, context=self.ssl_context) as resp:
+                    if resp.status in [200, 204]:
+                        return {
+                            "success": True,
+                            "status_code": resp.status
+                        }
+            except urllib.error.HTTPError as e:
+                err_msg = e.read().decode('utf-8', errors='ignore') if hasattr(e, 'read') else str(e)
+                last_error = f"Lỗi Discord HTTP {e.code}: {err_msg}"
+                # Nếu dính lỗi 429 (Cloudflare rate limit trên Render), thử tiếp proxy dự phòng
+                if e.code == 429:
+                    continue
+            except Exception as e:
+                last_error = f"Lỗi kết nối Discord: {str(e)}"
+                continue
+
+        return {"success": False, "error": last_error}
 
     def send_test_message(self) -> Dict[str, Any]:
         """Gửi thông báo thử nghiệm kết nối Webhook"""
