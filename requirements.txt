@@ -1,0 +1,2 @@
+# Dự án IUH Activity Hunter sử dụng thư viện tiêu chuẩn (Standard Library) của Python
+# Không yêu cầu cài đặt thêm thư viện bên ngoài (Zero Dependencies)

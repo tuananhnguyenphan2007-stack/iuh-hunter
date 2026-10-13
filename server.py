@@ -42,6 +42,18 @@ def load_config() -> Dict[str, Any]:
                 default_config.update(data)
         except Exception as e:
             print(f"Không thể đọc config.json: {e}")
+
+    # Ghi đè bằng biến môi trường (Environment Variables) nếu chạy trên Render/Cloud
+    if os.environ.get("WEBHOOK_URL"):
+        default_config["webhook_url"] = os.environ["WEBHOOK_URL"]
+    if os.environ.get("PHPSESSID"):
+        default_config["phpsessid"] = os.environ["PHPSESSID"]
+    if os.environ.get("INTERVAL_SECONDS"):
+        try:
+            default_config["interval_seconds"] = int(os.environ["INTERVAL_SECONDS"])
+        except ValueError:
+            pass
+
     return default_config
 
 
@@ -242,7 +254,16 @@ import threading
 
 
 def run_server(initial_port: int = 5000):
-    ports_to_try = [initial_port, 5001, 5002, 8080, 8888]
+    env_port = os.environ.get("PORT")
+    if env_port:
+        try:
+            initial_port = int(env_port)
+            ports_to_try = [initial_port]
+        except ValueError:
+            ports_to_try = [initial_port, 5001, 5002, 8080, 8888]
+    else:
+        ports_to_try = [initial_port, 5001, 5002, 8080, 8888]
+
     httpd = None
     actual_port = initial_port
 
@@ -299,5 +320,6 @@ def run_server(initial_port: int = 5000):
 
 
 if __name__ == "__main__":
-    run_server(5000)
+    port = int(os.environ.get("PORT", 5000))
+    run_server(port)
 
