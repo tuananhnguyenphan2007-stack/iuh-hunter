@@ -25,19 +25,23 @@ class DiscordNotifier:
     def _get_target_urls(self) -> List[str]:
         if not self.webhook_url:
             return []
-        urls = [self.webhook_url]
-        # Nếu đang dùng domain gốc của Discord, chuẩn bị sẵn proxy fallback
-        # Giải quyết triệt để lỗi HTTP 429 "global rate limits" do dải IP của Render/Cloud bị Discord chặn
+        urls = []
+        # Máy chủ Render/Cloud luôn bị Discord trực tiếp chặn 429 (global rate limits)
+        # và lewisakura bị Cloudflare chặn 403 Turnstile.
+        # Sử dụng proxy newstargeted chuyên dụng không có Cloudflare bot challenge:
         if "discord.com" in self.webhook_url:
-            proxy_url = self.webhook_url.replace("discord.com", "webhook.lewisakura.moe")
-            urls.append(proxy_url)
+            urls.append(self.webhook_url.replace("discord.com", "webhook.newstargeted.com"))
+            urls.append(self.webhook_url)
+            urls.append(self.webhook_url.replace("discord.com", "discordapp.com"))
         elif "discordapp.com" in self.webhook_url:
-            proxy_url = self.webhook_url.replace("discordapp.com", "webhook.lewisakura.moe")
-            urls.append(proxy_url)
+            urls.append(self.webhook_url.replace("discordapp.com", "webhook.newstargeted.com"))
+            urls.append(self.webhook_url)
+        else:
+            urls.append(self.webhook_url)
         return urls
 
     def send_raw(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Gửi raw JSON payload đến Discord Webhook với tự động dự phòng proxy khi gặp lỗi 429"""
+        """Gửi raw JSON payload đến Discord Webhook với tự động vượt lỗi 429 / 403 trên Cloud"""
         if not self.webhook_url:
             return {"success": False, "error": "Chưa cấu hình Discord Webhook URL."}
 
@@ -52,21 +56,23 @@ class DiscordNotifier:
                     data=data,
                     headers={
                         "Content-Type": "application/json",
-                        "User-Agent": "IUH-Activity-Bot/1.0"
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) IUH-Bot/2.0"
                     },
                     method="POST"
                 )
                 with urllib.request.urlopen(req, timeout=10, context=self.ssl_context) as resp:
-                    if resp.status in [200, 204]:
+                    if 200 <= resp.status < 300:
                         return {
                             "success": True,
                             "status_code": resp.status
                         }
             except urllib.error.HTTPError as e:
                 err_msg = e.read().decode('utf-8', errors='ignore') if hasattr(e, 'read') else str(e)
+                if "<html" in err_msg.lower() or "cloudflare" in err_msg.lower():
+                    err_msg = f"HTTP {e.code} (Máy chủ Cloudflare chặn dải IP)"
                 last_error = f"Lỗi Discord HTTP {e.code}: {err_msg}"
-                # Nếu dính lỗi 429 (Cloudflare rate limit trên Render), thử tiếp proxy dự phòng
-                if e.code == 429:
+                # Nếu dính 403 hoặc 429 (Cloudflare/Discord chặn), thử tiếp endpoint dự phòng tiếp theo
+                if e.code in [403, 429]:
                     continue
             except Exception as e:
                 last_error = f"Lỗi kết nối Discord: {str(e)}"
