@@ -6,4 +6,5 @@ __pycache__/
 Thumbs.db
 git_setup.bat
 push.bat
+push_interactive.bat
 
