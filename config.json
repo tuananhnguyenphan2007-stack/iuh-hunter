@@ -1,0 +1,9 @@
+{
+  "webhook_url": "https://discord.com/api/webhooks/1559509105557635173/uHprVMHkHDN0hq88dLfWD9G8WHpflg4lTGsEXoEJ7DqkxKYsQL3bHw1MS70_QWbA2T-0",
+  "interval_seconds": 3,
+  "target_url": "https://doantn.iuh.edu.vn/doanvien.html",
+  "auto_register": true,
+  "keywords": [],
+  "ping_everyone": true,
+  "phpsessid": "euhs7qsc5bcjvtjnrgo3ne9nhs"
+}

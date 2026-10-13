@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IUH Activity Hunter • Bot Săn Hoạt Động & Auto-Register</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="shortcut icon" href="https://doantn.iuh.edu.vn/templates/images/icon.ico">
+</head>
+<body>
+  <!-- Background Glow Orbs -->
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+  <div class="glow-orb orb-3"></div>
+
+  <div class="app-layout">
+    <!-- Navbar Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-logo-wrap">
+          <div class="brand-icon">⚡</div>
+          <div class="status-pulse-dot" id="headerStatusDot"></div>
+        </div>
+        <div class="brand-meta">
+          <div class="brand-title">IUH HUNTER <span class="badge-version">v2.0 PRO</span></div>
+          <div class="brand-subtitle">Tool Báo Động Slot & Tự Động Đăng Ký Đoàn - Hội IUH</div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="scanner-status-pill" id="scannerStatusPill">
+          <span class="pulse-indicator" id="scannerPulse"></span>
+          <span id="scannerStatusLabel">Đang dừng</span>
+        </div>
+        <button id="btnToggleScanner" class="btn btn-primary btn-glow">
+          <span class="btn-icon" id="toggleScannerIcon">▶</span>
+          <span id="toggleScannerText">BẮT ĐẦU SĂN SLOT</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Stat Metrics Counter Grid -->
+    <section class="metrics-grid">
+      <div class="metric-card glass-card">
+        <div class="metric-icon metric-purple">🛡️</div>
+        <div class="metric-body">
+          <div class="metric-label">Trạng Thái Session IUH</div>
+          <div class="metric-value" id="statSession">Chưa kiểm tra</div>
+          <div class="metric-caption" id="statSessionUser">MSSV: Chưa đăng nhập</div>
+        </div>
+      </div>
+
+      <div class="metric-card glass-card">
+        <div class="metric-icon metric-blue">📡</div>
+        <div class="metric-body">
+          <div class="metric-label">Discord Webhook</div>
+          <div class="metric-value" id="statWebhook">Chưa kết nối</div>
+          <div class="metric-caption" id="statWebhookPing">Ping: -- ms</div>
+        </div>
+      </div>
+
+      <div class="metric-card glass-card">
+        <div class="metric-icon metric-amber">🔄</div>
+        <div class="metric-body">
+          <div class="metric-label">Số Lần Đã Quét</div>
+          <div class="metric-value" id="statScanCount">0</div>
+          <div class="metric-caption" id="statScanSpeed">Chu kỳ: 3s</div>
+        </div>
+      </div>
+
+      <div class="metric-card glass-card">
+        <div class="metric-icon metric-green">🎯</div>
+        <div class="metric-body">
+          <div class="metric-label">Slot Săn Thành Công</div>
+          <div class="metric-value" id="statRegisteredCount">0</div>
+          <div class="metric-caption">Chế độ: Auto-Register BẬT</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Workspace Two Columns -->
+    <main class="main-grid">
+      <!-- Left Controls Column -->
+      <aside class="control-column">
+        
+        <!-- Box 1: IUH Login / Session -->
+        <div class="card glass-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="title-icon">🔐</span> Tài Khoản Sinh Viên IUH
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btnCheckSession" title="Kiểm tra xem cookie còn sống không">
+              <span class="btn-icon">↻</span> Kiểm tra phiên
+            </button>
+          </div>
+
+          <div class="card-body">
+            <!-- Tabs: Login vs Cookie -->
+            <div class="tab-pill-group">
+              <button class="tab-pill active" id="tabLoginBtn" data-target="tabLogin">Đăng nhập Captcha</button>
+              <button class="tab-pill" id="tabCookieBtn" data-target="tabCookie">Dán Cookie PHPSESSID</button>
+            </div>
+
+            <!-- Tab 1: Form Login -->
+            <div class="tab-content active" id="tabLogin">
+              <form id="formLogin" class="auth-form" onsubmit="return false;">
+                <div class="form-group">
+                  <label for="inputMssv">Mã số sinh viên (MSSV)</label>
+                  <input type="text" id="inputMssv" class="form-input" placeholder="Ví dụ: 20012345" autocomplete="username" required>
+                </div>
+
+                <div class="form-group">
+                  <label for="inputPassword">Mật khẩu portal IUH</label>
+                  <input type="password" id="inputPassword" class="form-input" placeholder="Mật khẩu cổng sv.iuh.edu.vn" autocomplete="current-password" required>
+                </div>
+
+                <div class="form-group captcha-group">
+                  <label for="inputCaptcha">Mã bảo mật (Captcha)</label>
+                  <div class="captcha-row">
+                    <div class="captcha-preview-wrap" id="captchaWrap">
+                      <div class="captcha-loader" id="captchaLoader">Đang tải...</div>
+                      <img id="imgCaptcha" class="captcha-img" src="" alt="Captcha IUH" style="display:none;">
+                    </div>
+                    <button type="button" class="btn btn-ghost btn-icon-only" id="btnRefreshCaptcha" title="Đổi mã captcha khác">
+                      🔄
+                    </button>
+                    <input type="text" id="inputCaptcha" class="form-input captcha-input" placeholder="5 ký tự" maxlength="5" required>
+                  </div>
+                </div>
+
+                <button type="submit" id="btnLogin" class="btn btn-primary btn-block">
+                  <span id="btnLoginText">ĐĂNG NHẬP IUH</span>
+                </button>
+              </form>
+            </div>
+
+            <!-- Tab 2: Manual Cookie -->
+            <div class="tab-content" id="tabCookie" style="display:none;">
+              <p class="text-muted small">
+                Nếu bạn đã đăng nhập sẵn trên Chrome/Edge, hãy bấm <code>F12 -> Application -> Cookies</code>, copy giá trị <strong>PHPSESSID</strong> và dán vào đây:
+              </p>
+              <div class="form-group">
+                <label for="inputCookie">Cookie PHPSESSID</label>
+                <input type="text" id="inputCookie" class="form-input font-mono" placeholder="Ví dụ: lhbqb7kca0avanmr7sdi7ougi1">
+              </div>
+              <button type="button" id="btnSaveCookie" class="btn btn-secondary btn-block">
+                Lưu & Áp Dụng Cookie
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Box 2: Discord Webhook -->
+        <div class="card glass-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="title-icon">💬</span> Cảnh Báo Discord Webhook
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-group">
+              <label for="inputWebhookUrl">Discord Webhook URL</label>
+              <input type="password" id="inputWebhookUrl" class="form-input font-mono" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
+              <span class="field-hint">Dán link Webhook kênh chat Discord của bạn để nhận tin nhắn chuông rung tức thì.</span>
+            </div>
+
+            <div class="form-row-toggles">
+              <label class="toggle-control">
+                <input type="checkbox" id="checkPingEveryone" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">Tag <code>@everyone</code> khi có slot</span>
+              </label>
+
+              <label class="toggle-control">
+                <input type="checkbox" id="checkSoundAlert" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">Âm thanh còi hú trên máy tính</span>
+              </label>
+            </div>
+
+            <div class="btn-group-row">
+              <button type="button" id="btnTestWebhook" class="btn btn-secondary">
+                🚀 Bắn tin thử nghiệm (Test Ping)
+              </button>
+              <button type="button" id="btnSaveWebhook" class="btn btn-ghost">
+                Lưu Webhook
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Box 3: Scanner Settings -->
+        <div class="card glass-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="title-icon">⚙️</span> Cấu Hình Tự Động Hóa (Auto-Pilot)
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-group">
+              <div class="toggle-panel">
+                <div class="toggle-panel-info">
+                  <div class="toggle-panel-title">Tự Động Đăng Ký (Auto-Register)</div>
+                  <div class="toggle-panel-desc">Gửi lệnh đăng ký tức thì ngay milli-giây đầu tiên phát hiện slot mở.</div>
+                </div>
+                <label class="toggle-control toggle-lg">
+                  <input type="checkbox" id="checkAutoRegister" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div class="flex-between">
+                <label for="rangeInterval">Tốc độ quét liên tục:</label>
+                <span class="badge badge-accent" id="lblInterval">3 giây / lần</span>
+              </div>
+              <input type="range" id="rangeInterval" min="1" max="15" value="3" step="1" class="slider-input">
+              <div class="slider-ticks">
+                <span>1s (Cực nhanh)</span>
+                <span>3s (Khuyên dùng)</span>
+                <span>10s</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="inputTargetUrl">Trang quét hoạt động (Target URL)</label>
+              <input type="text" id="inputTargetUrl" class="form-input font-mono" value="https://doantn.iuh.edu.vn/doanvien.html">
+            </div>
+
+            <div class="form-group">
+              <label for="inputKeywords">Bộ lọc từ khóa (Cách nhau bằng dấu phẩy)</label>
+              <input type="text" id="inputKeywords" class="form-input" placeholder="Ví dụ: hiến máu, mùa hè xanh (để trống = quét tất cả)">
+            </div>
+
+            <button type="button" id="btnSaveConfig" class="btn btn-ghost btn-block">
+              💾 Lưu Cấu Hình Scanner
+            </button>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- Right Content Column -->
+      <section class="content-column">
+        
+        <!-- Box 4: Live Activities Table -->
+        <div class="card glass-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <div class="card-title">
+                <span class="title-icon">📋</span> Danh Sách Hoạt Động Thời Gian Thực
+              </div>
+              <span class="badge badge-subtle" id="lblActivitiesCount">0 hoạt động</span>
+            </div>
+            <div class="card-actions">
+              <button class="btn btn-secondary btn-sm" id="btnManualFetch">
+                <span class="btn-icon">⚡</span> Quét thử ngay
+              </button>
+            </div>
+          </div>
+
+          <div class="card-body table-card-body">
+            <div class="activities-wrapper" id="activitiesContainer">
+              <div class="empty-state">
+                <div class="empty-icon">🔍</div>
+                <div class="empty-title">Chưa có dữ liệu hoạt động</div>
+                <div class="empty-desc">Nhấn <strong>"Bắt đầu săn slot"</strong> hoặc nút <strong>"Quét thử ngay"</strong> sau khi đăng nhập để tải danh sách các hoạt động Đoàn - Hội.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Box 5: Live Terminal Logs -->
+        <div class="card glass-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <div class="card-title">
+                <span class="title-icon">📟</span> Nhật Ký Hoạt Động (Live Terminal Logs)
+              </div>
+              <div class="live-dot-wrap">
+                <span class="live-dot"></span> LIVE
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="btn btn-ghost btn-sm" id="btnClearLogs">Xóa log</button>
+            </div>
+          </div>
+
+          <div class="card-body p-0">
+            <div class="terminal-window" id="terminalWindow">
+              <div class="terminal-line text-muted">
+                <span class="log-time">[00:00:00]</span> [SYSTEM] Khởi tạo giao diện IUH Activity Hunter Bot v2.0... Sẵn sàng.
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div>IUH Activity Hunter • Dành riêng cho sinh viên Đại học Công nghiệp TP.HCM (IUH)</div>
+      <div class="text-muted">Cổng thông tin gốc: <a href="https://doantn.iuh.edu.vn" target="_blank" rel="noopener">doantn.iuh.edu.vn</a></div>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
