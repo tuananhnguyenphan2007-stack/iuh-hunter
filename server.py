@@ -44,6 +44,12 @@ def load_config() -> Dict[str, Any]:
     # Ghi đè bởi biến môi trường nếu chạy trên Render/Docker
     if os.environ.get("LICENSE_API_URL"):
         default_config["license_api_url"] = os.environ["LICENSE_API_URL"]
+    if os.environ.get("DISCORD_WEBHOOK_URL"):
+        default_config["webhook_url"] = os.environ["DISCORD_WEBHOOK_URL"]
+    if os.environ.get("DISCORD_INVITE_URL"):
+        default_config["discord_invite_url"] = os.environ["DISCORD_INVITE_URL"]
+    if "lock_discord_webhook" not in default_config:
+        default_config["lock_discord_webhook"] = True
 
     return default_config
 
@@ -81,7 +87,12 @@ def call_sheets_api(api_url: str, params: Dict[str, Any]) -> Dict[str, Any]:
 
 # Khởi tạo quản lý phiên đa người dùng
 app_config = load_config()
-session_mgr = SessionManager(api_url=app_config.get("license_api_url", ""))
+session_mgr = SessionManager(
+    api_url=app_config.get("license_api_url", ""),
+    default_webhook_url=app_config.get("webhook_url", ""),
+    discord_invite_url=app_config.get("discord_invite_url", ""),
+    lock_discord_webhook=app_config.get("lock_discord_webhook", True)
+)
 
 
 def start_discord_bot_thread():
@@ -230,6 +241,22 @@ class RequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/config":
             cfg_data = dict(session.config)
             cfg_data["license_api_url"] = session_mgr.api_url
+            cfg_data["lock_discord_webhook"] = session_mgr.lock_discord_webhook
+            cfg_data["discord_invite_url"] = session_mgr.discord_invite_url
+            cfg_data["has_default_webhook"] = bool(session_mgr.default_webhook_url)
+
+            lic_stat = session.license_mgr.get_license_status(client_hwid=did)
+            is_admin = lic_stat.get("is_licensed") and lic_stat.get("key") == "IUH-ADMIN-VIP-2026"
+            cfg_data["is_admin"] = is_admin
+
+            if session_mgr.lock_discord_webhook:
+                if is_admin:
+                    cfg_data["webhook_url"] = session_mgr.default_webhook_url
+                else:
+                    cfg_data["webhook_url"] = "🔒 Discord Server Chung (Đã kết nối)" if session_mgr.default_webhook_url else ""
+            else:
+                cfg_data["webhook_url"] = session.config.get("webhook_url") or session_mgr.default_webhook_url
+
             self.send_json(cfg_data)
 
         elif path == "/api/admin/list-keys":
@@ -301,18 +328,26 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/discord/test":
             webhook_url = body.get("webhook_url")
-            if webhook_url:
+            if not session_mgr.lock_discord_webhook and webhook_url:
                 session.notifier.set_webhook_url(webhook_url)
                 session.config["webhook_url"] = webhook_url
                 session_mgr.save_sessions()
-            res = session.notifier.send_test_message()
+            elif session_mgr.lock_discord_webhook and session_mgr.default_webhook_url:
+                session.notifier.set_webhook_url(session_mgr.default_webhook_url)
+
+            mssv = session.client.user_info.get("mssv") or body.get("mssv") or ""
+            student_info = f"MSSV {mssv}" if mssv else "Khách vãng lai"
+            res = session.notifier.send_test_message(student_info=student_info)
             if res.get("success"):
-                session.scanner.log("Đã gửi tin nhắn thử nghiệm Discord thành công!", "success")
+                session.scanner.log(f"Đã gửi tin nhắn thử nghiệm Discord thành công! ({student_info})", "success")
             else:
                 session.scanner.log(f"Lỗi gửi tin Discord: {res.get('error')}", "danger")
             self.send_json(res)
 
         elif path == "/api/config":
+            if session_mgr.lock_discord_webhook:
+                # Không cho khách ghi đè webhook server
+                body["webhook_url"] = session_mgr.default_webhook_url
             session.update_config(body)
             if "license_api_url" in body:
                 session_mgr.set_api_url(body["license_api_url"])
@@ -389,6 +424,28 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "new_mssv": new_mssv
             })
             self.send_json(res)
+
+        elif path == "/api/admin/discord-config":
+            lic_stat = session.license_mgr.get_license_status(client_hwid=did)
+            if not lic_stat.get("is_licensed") or lic_stat.get("key") != "IUH-ADMIN-VIP-2026":
+                self.send_json({"success": False, "error": "Chỉ Admin Master Key mới có quyền cấu hình Discord Server."}, 403)
+                return
+            wh_url = body.get("webhook_url", "").strip()
+            inv_url = body.get("discord_invite_url", "").strip()
+            lock_wh = body.get("lock_discord_webhook", True)
+            session_mgr.set_discord_config(webhook_url=wh_url, invite_url=inv_url, lock_webhook=lock_wh)
+            app_config["webhook_url"] = wh_url
+            app_config["discord_invite_url"] = inv_url
+            app_config["lock_discord_webhook"] = lock_wh
+            save_config(app_config)
+            session_mgr.save_sessions()
+            self.send_json({
+                "success": True,
+                "message": "Đã lưu và áp dụng cấu hình Discord Server cho toàn bộ khách hàng!",
+                "webhook_url": wh_url,
+                "discord_invite_url": inv_url,
+                "lock_discord_webhook": lock_wh
+            })
 
         else:
             self.send_json({"error": "Unknown POST route"}, 404)

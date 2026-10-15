@@ -167,6 +167,44 @@
             </div>
           </div>
         </div>
+
+        <!-- Hàng Cấu Hình Discord Server Cố Định Cho Toàn Bộ Khách Hàng -->
+        <div class="admin-discord-section" style="margin-top: 24px; padding-top: 18px; border-top: 1px dashed rgba(245, 158, 11, 0.3);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <h4 class="admin-subheading" style="margin: 0;">💬 Cấu Hình Discord Server Cố Định (Dành Cho Toàn Bộ Khách Hàng)</h4>
+            <span class="badge badge-success" id="adminDiscordStatusBadge">🟢 Đang cố định cho toàn hệ thống</span>
+          </div>
+          <p class="text-muted small" style="margin-bottom: 14px; line-height: 1.4;">
+            Khi bạn bật <strong>Cố định Webhook Server</strong>, mọi khách hàng dùng tool sẽ tự động gửi thông báo về Discord Server của bạn. Khách hàng không cần tự tạo Webhook nữa, bạn chỉ việc gửi link mời vào server của bạn!
+          </p>
+          <form id="formAdminDiscord" class="admin-form" onsubmit="return false;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div class="form-group">
+                <label for="adminWebhookUrl">Discord Webhook URL (Kênh chat Server của bạn):</label>
+                <input type="password" id="adminWebhookUrl" class="form-input font-mono" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
+              </div>
+              <div class="form-group">
+                <label for="adminDiscordInviteUrl">Link Mời Vào Server Discord (Invite Link cho khách):</label>
+                <input type="text" id="adminDiscordInviteUrl" class="form-input font-mono" placeholder="Ví dụ: https://discord.gg/abcxyz">
+              </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; flex-wrap: wrap; gap: 12px;">
+              <label class="toggle-control">
+                <input type="checkbox" id="adminLockDiscordWebhook" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-label"><strong>Cố định Webhook Server</strong> (Khách không cần tự tạo Webhook, nhận chung kênh)</span>
+              </label>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btnAdminTestDiscord">
+                  🚀 Bắn Tin Thử Lên Server
+                </button>
+                <button type="submit" class="btn btn-primary btn-sm btn-glow" id="btnAdminSaveDiscord">
+                  💾 Lưu Cấu Hình Discord Server
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
       </div>
     </section>
 
@@ -253,12 +291,27 @@
             <div class="card-title">
               <span class="title-icon">💬</span> Cảnh Báo Discord Webhook
             </div>
+            <span id="badgeDiscordStatus" class="badge badge-success" style="display:none;">🟢 Server Sẵn Sàng</span>
           </div>
           <div class="card-body">
-            <div class="form-group">
+            <!-- Thông báo khi dùng Server Discord chung của Tool -->
+            <div id="boxFixedDiscordNotice" style="background: rgba(88, 101, 242, 0.12); border: 1px solid rgba(88, 101, 242, 0.35); border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                <span class="badge badge-purple">📢 Discord Server Chung</span>
+                <span style="font-size: 0.8rem; font-weight: 600; color: #a5b4fc;">Đã kết nối máy chủ Discord của Tool</span>
+              </div>
+              <p class="text-muted small" style="margin: 0 0 10px 0; line-height: 1.4;">
+                Tất cả cảnh báo có slot mới và kết quả auto-register sẽ được tự động gửi về <strong>Discord Server của Tool</strong>. Bạn chỉ cần vào server Discord để nhận chuông rung điện thoại tức thì!
+              </p>
+              <a id="btnJoinDiscordServer" href="#" target="_blank" class="btn btn-discord btn-block btn-sm" style="display:none; text-decoration: none; text-align: center;">
+                💬 Tham Gia Discord Server Nhận Thông Báo
+              </a>
+            </div>
+
+            <div class="form-group" id="grpClientWebhookInput">
               <label for="inputWebhookUrl">Discord Webhook URL</label>
               <input type="password" id="inputWebhookUrl" class="form-input font-mono" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
-              <span class="field-hint">Dán link Webhook kênh chat Discord của bạn để nhận tin nhắn chuông rung tức thì.</span>
+              <span class="field-hint" id="hintWebhookUrl">Dán link Webhook kênh chat Discord của bạn để nhận tin nhắn chuông rung tức thì.</span>
             </div>
 
             <div class="form-row-toggles">

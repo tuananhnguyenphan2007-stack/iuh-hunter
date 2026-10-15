@@ -80,21 +80,25 @@ class DiscordNotifier:
 
         return {"success": False, "error": last_error}
 
-    def send_test_message(self) -> Dict[str, Any]:
+    def send_test_message(self, student_info: str = "") -> Dict[str, Any]:
         """Gửi thông báo thử nghiệm kết nối Webhook"""
+        fields = [
+            {"name": "Trạng thái", "value": "🟢 Online & Sẵn sàng", "inline": True},
+            {"name": "Thời gian", "value": time.strftime("%H:%M:%S %d/%m/%Y"), "inline": True}
+        ]
+        if student_info:
+            fields.append({"name": "Sinh viên kiểm tra", "value": student_info, "inline": False})
+
         payload = {
             "username": "IUH Activity Hunter",
             "avatar_url": "https://doantn.iuh.edu.vn/templates/images/logo.png",
-            "content": "🔔 **[TEST THÔNG BÁO]** Bot săn hoạt động IUH đã kết nối thành công!",
+            "content": f"🔔 **[TEST THÔNG BÁO]** Bot săn hoạt động IUH đã kết nối thành công!{f' ({student_info})' if student_info else ''}",
             "embeds": [
                 {
                     "title": "✅ Kết nối Discord Webhook thành công",
                     "description": "Hệ thống sẵn sàng nhận thông báo slot hoạt động Đoàn - Hội IUH tức thì.",
                     "color": 3447003, # Blue
-                    "fields": [
-                        {"name": "Trạng thái", "value": "🟢 Online & Sẵn sàng", "inline": True},
-                        {"name": "Thời gian", "value": time.strftime("%H:%M:%S %d/%m/%Y"), "inline": True}
-                    ],
+                    "fields": fields,
                     "footer": {
                         "text": "IUH Activity Hunter Bot • Phát triển dành riêng cho sinh viên IUH"
                     }

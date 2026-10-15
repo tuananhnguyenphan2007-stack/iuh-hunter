@@ -23,11 +23,11 @@ SESSIONS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sessio
 
 
 class UserSession:
-    def __init__(self, session_id: str, device_id: str = "", api_url: str = ""):
+    def __init__(self, session_id: str, device_id: str = "", api_url: str = "", default_webhook_url: str = ""):
         self.session_id = session_id
         self.device_id = device_id
         self.config: Dict[str, Any] = {
-            "webhook_url": "",
+            "webhook_url": default_webhook_url,
             "interval_seconds": 3,
             "target_url": "https://doantn.iuh.edu.vn/doanvien.html",
             "auto_register": True,
@@ -36,7 +36,7 @@ class UserSession:
             "phpsessid": ""
         }
         self.client = IUHClient()
-        self.notifier = DiscordNotifier()
+        self.notifier = DiscordNotifier(webhook_url=default_webhook_url)
         self.scanner = ActivityScanner(client=self.client, notifier=self.notifier)
         self.license_mgr = LicenseManager(api_url=api_url, cache_file=None)
         self.created_at = time.time()
@@ -91,8 +91,11 @@ class UserSession:
 
 
 class SessionManager:
-    def __init__(self, api_url: str = ""):
+    def __init__(self, api_url: str = "", default_webhook_url: str = "", discord_invite_url: str = "", lock_discord_webhook: bool = True):
         self.api_url = api_url.strip()
+        self.default_webhook_url = default_webhook_url.strip()
+        self.discord_invite_url = discord_invite_url.strip()
+        self.lock_discord_webhook = lock_discord_webhook
         self.sessions: Dict[str, UserSession] = {}
         self.lock = threading.Lock()
         self.load_sessions()
@@ -104,17 +107,35 @@ class SessionManager:
             for s in self.sessions.values():
                 s.license_mgr.set_api_url(self.api_url)
 
+    def set_discord_config(self, webhook_url: str, invite_url: str = "", lock_webhook: bool = True):
+        with self.lock:
+            self.default_webhook_url = webhook_url.strip()
+            self.discord_invite_url = invite_url.strip()
+            self.lock_discord_webhook = lock_webhook
+            if lock_webhook and self.default_webhook_url:
+                for s in self.sessions.values():
+                    s.config["webhook_url"] = self.default_webhook_url
+                    s.notifier.set_webhook_url(self.default_webhook_url)
+
     def get_or_create(self, session_id: str, device_id: str = "") -> UserSession:
         if not session_id:
             session_id = f"sess_{int(time.time()*1000)}"
         with self.lock:
             if session_id not in self.sessions:
-                s = UserSession(session_id=session_id, device_id=device_id, api_url=self.api_url)
+                s = UserSession(
+                    session_id=session_id,
+                    device_id=device_id,
+                    api_url=self.api_url,
+                    default_webhook_url=self.default_webhook_url if self.lock_discord_webhook else ""
+                )
                 self.sessions[session_id] = s
             else:
                 s = self.sessions[session_id]
                 if device_id and not s.device_id:
                     s.device_id = device_id
+                if self.lock_discord_webhook and self.default_webhook_url:
+                    s.config["webhook_url"] = self.default_webhook_url
+                    s.notifier.set_webhook_url(self.default_webhook_url)
             s.last_active = time.time()
             return s
 

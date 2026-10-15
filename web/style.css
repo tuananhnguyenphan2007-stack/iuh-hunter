@@ -1060,3 +1060,23 @@ label {
   gap: 4px;
   flex-wrap: wrap;
 }
+
+/* Discord Server Button */
+.btn-discord {
+  background: #5865F2 !important;
+  color: #ffffff !important;
+  font-weight: 600;
+  border: none;
+  box-shadow: 0 4px 14px rgba(88, 101, 242, 0.35);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn-discord:hover {
+  background: #4752c4 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(88, 101, 242, 0.55);
+}
+

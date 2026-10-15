@@ -214,7 +214,21 @@ const elements = {
   resKeyMessage: document.getElementById('resKeyMessage'),
   btnCopyCustomerMessage: document.getElementById('btnCopyCustomerMessage'),
   adminKeyCount: document.getElementById('adminKeyCount'),
-  tbodyAdminKeys: document.getElementById('tbodyAdminKeys')
+  tbodyAdminKeys: document.getElementById('tbodyAdminKeys'),
+
+  badgeDiscordStatus: document.getElementById('badgeDiscordStatus'),
+  boxFixedDiscordNotice: document.getElementById('boxFixedDiscordNotice'),
+  btnJoinDiscordServer: document.getElementById('btnJoinDiscordServer'),
+  grpClientWebhookInput: document.getElementById('grpClientWebhookInput'),
+  hintWebhookUrl: document.getElementById('hintWebhookUrl'),
+
+  formAdminDiscord: document.getElementById('formAdminDiscord'),
+  adminWebhookUrl: document.getElementById('adminWebhookUrl'),
+  adminDiscordInviteUrl: document.getElementById('adminDiscordInviteUrl'),
+  adminLockDiscordWebhook: document.getElementById('adminLockDiscordWebhook'),
+  btnAdminTestDiscord: document.getElementById('btnAdminTestDiscord'),
+  btnAdminSaveDiscord: document.getElementById('btnAdminSaveDiscord'),
+  adminDiscordStatusBadge: document.getElementById('adminDiscordStatusBadge')
 };
 
 // Helpers
@@ -286,6 +300,38 @@ async function loadInitialConfig() {
       elements.inputWebhookUrl.value = cfg.webhook_url;
       elements.statWebhook.textContent = 'Đã cấu hình';
       elements.statWebhook.style.color = '#38bdf8';
+    }
+
+    if (cfg.lock_discord_webhook) {
+      if (elements.boxFixedDiscordNotice) elements.boxFixedDiscordNotice.style.display = 'block';
+      if (elements.badgeDiscordStatus) elements.badgeDiscordStatus.style.display = 'inline-block';
+      if (elements.inputWebhookUrl) {
+        elements.inputWebhookUrl.readOnly = true;
+        elements.inputWebhookUrl.value = cfg.webhook_url || '🔒 Discord Server Chung (Đã kết nối)';
+      }
+      if (elements.btnSaveWebhook) elements.btnSaveWebhook.style.display = 'none';
+      if (elements.hintWebhookUrl) {
+        elements.hintWebhookUrl.textContent = 'Webhook đã được cố định theo máy chủ Discord của Tool. Bạn không cần tự tạo.';
+      }
+    } else {
+      if (elements.boxFixedDiscordNotice) elements.boxFixedDiscordNotice.style.display = 'none';
+      if (elements.badgeDiscordStatus) elements.badgeDiscordStatus.style.display = 'none';
+      if (elements.inputWebhookUrl) elements.inputWebhookUrl.readOnly = false;
+      if (elements.btnSaveWebhook) elements.btnSaveWebhook.style.display = 'inline-block';
+    }
+
+    if (cfg.discord_invite_url && elements.btnJoinDiscordServer) {
+      elements.btnJoinDiscordServer.href = cfg.discord_invite_url;
+      elements.btnJoinDiscordServer.style.display = 'inline-flex';
+    } else if (elements.btnJoinDiscordServer) {
+      elements.btnJoinDiscordServer.style.display = 'none';
+    }
+
+    // Điền dữ liệu cho Bảng Admin nếu là Admin
+    if (cfg.is_admin) {
+      if (elements.adminWebhookUrl) elements.adminWebhookUrl.value = cfg.webhook_url || '';
+      if (elements.adminDiscordInviteUrl) elements.adminDiscordInviteUrl.value = cfg.discord_invite_url || '';
+      if (elements.adminLockDiscordWebhook) elements.adminLockDiscordWebhook.checked = !!cfg.lock_discord_webhook;
     }
     if (cfg.interval_seconds) {
       elements.rangeInterval.value = cfg.interval_seconds;
@@ -397,6 +443,12 @@ function setupEventListeners() {
   }
   if (elements.btnCopyCustomerMessage) {
     elements.btnCopyCustomerMessage.addEventListener('click', copyCustomerMessage);
+  }
+  if (elements.btnAdminSaveDiscord) {
+    elements.btnAdminSaveDiscord.addEventListener('click', handleAdminSaveDiscord);
+  }
+  if (elements.btnAdminTestDiscord) {
+    elements.btnAdminTestDiscord.addEventListener('click', handleAdminTestDiscord);
   }
 }
 
@@ -1275,5 +1327,76 @@ window.handleAdminChangeMssv = async function(key, currentMssv) {
     console.error(err);
   }
 };
+
+async function handleAdminSaveDiscord(e) {
+  if (e) e.preventDefault();
+  const wh = elements.adminWebhookUrl ? elements.adminWebhookUrl.value.trim() : '';
+  const invite = elements.adminDiscordInviteUrl ? elements.adminDiscordInviteUrl.value.trim() : '';
+  const locked = elements.adminLockDiscordWebhook ? elements.adminLockDiscordWebhook.checked : true;
+
+  if (!wh) {
+    alert('Vui lòng nhập Discord Webhook URL cho kênh thông báo server của bạn!');
+    if (elements.adminWebhookUrl) elements.adminWebhookUrl.focus();
+    return;
+  }
+
+  elements.btnAdminSaveDiscord.disabled = true;
+  elements.btnAdminSaveDiscord.textContent = '⏳ Đang lưu...';
+
+  try {
+    const res = await fetch('/api/admin/discord-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        webhook_url: wh,
+        discord_invite_url: invite,
+        lock_discord_webhook: locked
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      sfx.playSuccess();
+      alert(`🎉 ${data.message || 'Đã lưu cấu hình Discord Server thành công!'}`);
+      loadInitialConfig();
+    } else {
+      alert(`⚠️ Lỗi: ${data.error || 'Có lỗi xảy ra'}`);
+    }
+  } catch (err) {
+    alert('Lỗi kết nối khi lưu cấu hình Discord.');
+  } finally {
+    elements.btnAdminSaveDiscord.disabled = false;
+    elements.btnAdminSaveDiscord.textContent = '💾 Lưu Cấu Hình Discord Server';
+  }
+}
+
+async function handleAdminTestDiscord() {
+  const wh = elements.adminWebhookUrl ? elements.adminWebhookUrl.value.trim() : '';
+  if (!wh) {
+    alert('Vui lòng nhập Webhook URL trước khi thử nghiệm!');
+    return;
+  }
+  elements.btnAdminTestDiscord.disabled = true;
+  elements.btnAdminTestDiscord.textContent = 'Đang bắn tin...';
+  try {
+    const res = await fetch('/api/discord/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhook_url: wh, mssv: 'ADMIN TEST' })
+    });
+    const data = await res.json();
+    if (data.success) {
+      sfx.playSuccess();
+      alert('🎉 Đã bắn tin thử nghiệm lên Discord Server thành công! Hãy kiểm tra kênh chat Discord của bạn.');
+    } else {
+      alert(`⚠️ Thất bại: ${data.error || 'Lỗi gửi tin'}`);
+    }
+  } catch (e) {
+    alert('Lỗi kết nối server.');
+  } finally {
+    elements.btnAdminTestDiscord.disabled = false;
+    elements.btnAdminTestDiscord.textContent = '🚀 Bắn Tin Thử Lên Server';
+  }
+}
+
 
 
