@@ -235,122 +235,121 @@ class IUHClient:
         }
 
     def _parse_activities_from_html(self, html: str, base_url: str) -> List[Dict[str, Any]]:
-        """Phân tích HTML bảng tblDoanvien của IUH để bóc tách hoạt động, slot và nút đăng ký"""
+        """
+        Phân tích chính xác bảng 'Đăng ký tham gia' (tblDoanvien trong #tab1) của cổng Đoàn IUH.
+        Tuyệt đối không quét nhầm bảng Thông tin cá nhân sinh viên hoặc bảng Đánh giá điểm rèn luyện.
+        """
         activities = []
 
-        # 1. Tìm bảng tblDoanvien chính thức của Đoàn trường IUH
+        # 1. Tìm bảng tblDoanvien chính thức (nằm trong mục Đăng ký tham gia - #tab1)
         tbl_match = re.search(r'<table[^>]*tblDoanvien[^>]*>(.*?)</table>', html, re.DOTALL | re.IGNORECASE)
-        if tbl_match:
-            rows = re.findall(r'<tr\b[^>]*>(.*?)</tr>', tbl_match.group(1), re.DOTALL | re.IGNORECASE)
-            for r in rows:
-                cells = re.findall(r'<td\b[^>]*>(.*?)</td>', r, re.DOTALL | re.IGNORECASE)
-                if len(cells) >= 5:
-                    title_cell = cells[1]
-                    title_clean = re.sub(r'<[^>]+>', ' ', title_cell).strip()
-                    
-                    # Trích xuất Modal ID (ví dụ: myModal_4196)
-                    modal_id_match = re.search(r'data-target=["\']#([a-zA-Z0-9_-]+)["\']', title_cell)
-                    modal_id = modal_id_match.group(1) if modal_id_match else ""
-                    
-                    # Trích xuất ID số của hoạt động (ví dụ 4196)
-                    act_num_id = ""
-                    if modal_id:
-                        num_m = re.search(r'\d+', modal_id)
-                        if num_m:
-                            act_num_id = num_m.group(0)
+        if not tbl_match:
+            # Tìm trong div#tab1 nếu có
+            tab1_m = re.search(r'<div[^>]*id=[\'"]tab1[\'"][^>]*>(.*?)</div>', html, re.DOTALL | re.IGNORECASE)
+            if tab1_m:
+                tbl_match = re.search(r'<table\b[^>]*>(.*?)</table>', tab1_m.group(1), re.DOTALL | re.IGNORECASE)
 
-                    # Trích xuất số slot: ví dụ (400/400) hoặc (350/400)
-                    slot_match = re.search(r'\((\d+)\s*/\s*(\d+)\)', title_clean)
-                    cur_slot, max_slot = (int(slot_match.group(1)), int(slot_match.group(2))) if slot_match else (0, 0)
-                    slot_str = f"{cur_slot}/{max_slot}" if max_slot > 0 else "N/A"
+        if not tbl_match:
+            return []
 
-                    # Cột đăng ký (thường là ô thứ 6)
-                    reg_cell = cells[5] if len(cells) > 5 else ""
-                    reg_clean = re.sub(r'<[^>]+>', '', reg_cell).strip()
-                    
-                    # Link hoặc action đăng ký
-                    reg_url = None
-                    link_match = re.search(r'href=["\']([^"\']+)["\']', reg_cell)
-                    if link_match and link_match.group(1) != '#':
-                        reg_url = urllib.parse.urljoin(base_url, link_match.group(1))
+        table_content = tbl_match.group(1)
 
-                    # Xác định còn slot hay không:
-                    # Nếu số lượng đã đăng ký < tổng số lượng -> CÒN SLOT
-                    has_slot = (cur_slot < max_slot and max_slot > 0)
-                    if not has_slot and reg_url:
-                        has_slot = True
-                    if "đủ số lượng" in reg_clean.lower() or "hết slot" in reg_clean.lower() or "hết chỗ" in reg_clean.lower():
-                        has_slot = False
+        # Lấy nội dung bên trong tbody (tránh lấy dòng tiêu đề thead)
+        tbody_match = re.search(r'<tbody\b[^>]*>(.*?)</tbody>', table_content, re.DOTALL | re.IGNORECASE)
+        rows_content = tbody_match.group(1) if tbody_match else table_content
 
-                    # Trích xuất chi tiết mô tả từ Popup Modal
-                    desc = ""
-                    if modal_id:
-                        modal_regex = r'<div[^>]*id=["\']' + re.escape(modal_id) + r'["\'][^>]*>.*?<div class=["\']modal-body["\']>(.*?)</div>'
-                        modal_match = re.search(modal_regex, html, re.DOTALL | re.IGNORECASE)
-                        if modal_match:
-                            desc = re.sub(r'<br\s*/?>', ' | ', modal_match.group(1)).strip()
-                            desc = re.sub(r'<[^>]+>', ' ', desc).strip()
+        rows = re.findall(r'<tr\b[^>]*>(.*?)</tr>', rows_content, re.DOTALL | re.IGNORECASE)
+        for r in rows:
+            cells = re.findall(r'<td\b[^>]*>(.*?)</td>', r, re.DOTALL | re.IGNORECASE)
+            # Một dòng hoạt động hợp lệ của IUH phải có từ 4 đến 6 cột
+            if len(cells) < 4:
+                continue
 
-                    # Cột điểm rèn luyện & kết thúc
-                    diem_drl = re.sub(r'<[^>]+>', '', cells[3]).strip() if len(cells) > 3 else ""
-                    deadline = re.sub(r'<[^>]+>', '', cells[4]).strip() if len(cells) > 4 else ""
+            # Kiểm tra an toàn: Tuyệt đối không lấy dòng chứa thông tin cá nhân
+            row_raw_text = re.sub(r'<[^>]+>', ' ', r).lower()
+            if any(k in row_raw_text for k in ['kết quả tra cứu', 'sinh viên:', 'mssv:', 'lớp:', 'đoàn phí', 'pm đánh giá', 'ngày sinh:']):
+                continue
 
-                    meta_desc = f"+{diem_drl} ĐRL | Hạn: {deadline}"
-                    if desc:
-                        meta_desc = f"{meta_desc} | {desc}"
+            # Cột 1: Tên hoạt động & Modal chi tiết
+            title_cell = cells[1]
+            title_clean = re.sub(r'<[^>]+>', ' ', title_cell).strip()
+            title_clean = re.sub(r'\s+', ' ', title_clean)
+            if not title_clean or len(title_clean) < 3 or title_clean.lower() in ['tt', 'hoạt động(t/gia)', 'tên hoạt động']:
+                continue
 
-                    activities.append({
-                        "id": act_num_id or modal_id or f"act_{len(activities)+1}",
-                        "title": title_clean,
-                        "slot": slot_str,
-                        "has_slot": has_slot,
-                        "status_text": reg_clean or ("Còn slot" if has_slot else "Hết chỗ"),
-                        "details": meta_desc,
-                        "register_url": reg_url
-                    })
+            # Trích xuất Modal ID (ví dụ: myModal_4196)
+            modal_id_match = re.search(r'data-target=["\']#([a-zA-Z0-9_-]+)["\']', title_cell)
+            modal_id = modal_id_match.group(1) if modal_id_match else ""
 
-        # 2. Fallback nếu không có tblDoanvien: quét bảng chung
-        if not activities:
-            table_matches = re.findall(r'<table\b[^>]*>(.*?)</table>', html, re.DOTALL | re.IGNORECASE)
-            for t_html in table_matches:
-                rows = re.findall(r'<tr\b[^>]*>(.*?)</tr>', t_html, re.DOTALL | re.IGNORECASE)
-                for row in rows:
-                    cols = re.findall(r'<td\b[^>]*>(.*?)</td>', row, re.DOTALL | re.IGNORECASE)
-                    if not cols or len(cols) < 2:
-                        continue
-                    clean_cols = [re.sub(r'<[^>]+>', ' ', c).strip() for c in cols]
-                    title = clean_cols[1] if len(clean_cols) > 1 else clean_cols[0]
-                    if any(h in title.lower() for h in ['stt', 'tên hoạt động', 'tiêu đề']):
-                        continue
-                    activities.append({
-                        "id": f"act_{len(activities)+1}",
-                        "title": title[:120],
-                        "details": " | ".join(clean_cols[:4]),
-                        "slot": "N/A",
-                        "has_slot": any(k in row.lower() for k in ['đăng ký', 'dang ky', 'confirmregister']),
-                        "register_url": None
-                    })
+            # Trích xuất ID số của hoạt động (ví dụ 4196)
+            act_num_id = ""
+            if modal_id:
+                num_m = re.search(r'\d+', modal_id)
+                if num_m:
+                    act_num_id = num_m.group(0)
 
-        # 2. Tìm kiếm trong các div container (nếu không dùng bảng mà dùng card/list)
-        if not activities:
-            card_matches = re.findall(r'<div\b[^>]*class=[\'"][^\'"]*(?:item|panel|activity|hoatdong)[^\'"]*[\'"][^>]*>(.*?)</div>', html, re.DOTALL | re.IGNORECASE)
-            for idx, card in enumerate(card_matches):
-                clean_text = re.sub(r'<[^>]+>', ' ', card).strip()
-                if len(clean_text) < 10:
-                    continue
-                
-                has_reg = any(k in card.lower() for k in ['đăng ký', 'dang ky', 'confirmregister'])
-                link_match = re.search(r'href=[\'"]([^\'"]+)[\'"]', card)
-                reg_link = urllib.parse.urljoin(base_url, link_match.group(1)) if link_match else None
+            # Trích xuất số slot: ví dụ (400/400) hoặc (350/400) hoặc 40/50
+            slot_match = re.search(r'\((\d+)\s*/\s*(\d+)\)', title_clean)
+            if not slot_match:
+                slot_match = re.search(r'(\d+)\s*/\s*(\d+)', title_clean)
 
-                activities.append({
-                    "id": f"card_{idx+1}",
-                    "title": clean_text[:100],
-                    "details": clean_text[:200],
-                    "slot": "Đang cập nhật",
-                    "has_slot": has_reg,
-                    "register_url": reg_link
-                })
+            cur_slot, max_slot = (int(slot_match.group(1)), int(slot_match.group(2))) if slot_match else (0, 0)
+            slot_str = f"{cur_slot}/{max_slot}" if max_slot > 0 else "N/A"
+
+            # Cột đăng ký (thường là ô thứ 6, index 5 hoặc ô cuối cùng)
+            reg_cell = cells[5] if len(cells) > 5 else cells[-1]
+            reg_clean = re.sub(r'<[^>]+>', '', reg_cell).strip()
+
+            # Link hoặc action đăng ký
+            reg_url = None
+            link_match = re.search(r'href=["\']([^"\']+)["\']', reg_cell)
+            if link_match and link_match.group(1) not in ['#', '', 'javascript:void(0)']:
+                reg_url = urllib.parse.urljoin(base_url, link_match.group(1))
+
+            # Xác định còn slot hay không:
+            has_slot = False
+            if max_slot > 0 and cur_slot < max_slot:
+                has_slot = True
+            elif reg_url and not any(k in reg_clean.lower() for k in ['đủ số lượng', 'hết slot', 'hết chỗ', 'đã kết thúc']):
+                has_slot = True
+
+            if any(k in reg_clean.lower() for k in ['đủ số lượng', 'hết slot', 'hết chỗ', 'đã kết thúc', 'hết hạn']):
+                has_slot = False
+
+            # Trích xuất chi tiết mô tả từ Popup Modal
+            desc = ""
+            if modal_id:
+                modal_regex = r'<div[^>]*id=["\']' + re.escape(modal_id) + r'["\'][^>]*>.*?<div class=["\']modal-body["\']>(.*?)</div>'
+                modal_match = re.search(modal_regex, html, re.DOTALL | re.IGNORECASE)
+                if modal_match:
+                    desc = re.sub(r'<br\s*/?>', ' | ', modal_match.group(1)).strip()
+                    desc = re.sub(r'<[^>]+>', ' ', desc).strip()
+                    desc = re.sub(r'\s+', ' ', desc)
+
+            # Cột học kỳ, điểm rèn luyện & kết thúc
+            hocky = re.sub(r'<[^>]+>', '', cells[2]).strip() if len(cells) > 2 else ""
+            diem_drl = re.sub(r'<[^>]+>', '', cells[3]).strip() if len(cells) > 3 else ""
+            deadline = re.sub(r'<[^>]+>', '', cells[4]).strip() if len(cells) > 4 else ""
+
+            meta_parts = []
+            if diem_drl:
+                meta_parts.append(f"+{diem_drl} ĐRL")
+            if deadline:
+                meta_parts.append(f"Hạn: {deadline}")
+            if hocky:
+                meta_parts.append(hocky)
+            if desc:
+                meta_parts.append(desc)
+
+            activities.append({
+                "id": act_num_id or modal_id or f"act_{len(activities)+1}",
+                "title": title_clean,
+                "slot": slot_str,
+                "has_slot": has_slot,
+                "status_text": reg_clean or ("Còn slot" if has_slot else "Hết chỗ"),
+                "details": " | ".join(meta_parts),
+                "register_url": reg_url
+            })
 
         return activities
 

@@ -544,9 +544,9 @@ function renderActivities(activities) {
   if (!activities || activities.length === 0) {
     elements.activitiesContainer.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">📭</div>
-        <div class="empty-title">Không tìm thấy hoạt động nào</div>
-        <div class="empty-desc">Hiện trang web không có danh sách hoạt động đang hiển thị hoặc chưa có sự kiện mới.</div>
+        <div class="empty-icon">⚡</div>
+        <div class="empty-title">Chưa có hoạt động nào đang mở đăng ký</div>
+        <div class="empty-desc">Bot đang túc trực quét liên tục 24/7 tại mục <strong>Đăng ký tham gia</strong>. Ngay khi Đoàn trường mở hoạt động mới hoặc có slot trống, bot sẽ lập tức cảnh báo Discord và tự động đăng ký!</div>
       </div>
     `;
     return;
