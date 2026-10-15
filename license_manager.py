@@ -90,29 +90,31 @@ class LicenseManager:
 
         hwid = self.get_hardware_id()
 
-        # Nếu chưa cấu hình Google Apps Script URL, hỗ trợ Master Key dự phòng cho Admin
-        if not self.api_url:
-            # Master Developer Key dành cho bạn tự kiểm tra
-            if key == "IUH-ADMIN-VIP-2026" or key.startswith("IUH-DEV-"):
-                lic_data = {
-                    "is_licensed": True,
-                    "key": key,
-                    "hwid": hwid,
-                    "mssv": mssv or "ALL",
-                    "type": "Admin Master Key",
-                    "expires_at": "2099-12-31",
-                    "activated_at": time.strftime("%Y-%m-%d %H:%M:%S")
-                }
-                self._save_cached_license(lic_data)
-                return {
-                    "success": True,
-                    "message": "Kích hoạt Master Key thành công (Vĩnh viễn)!",
-                    "license": lic_data
-                }
+        # 1. Master Developer Key dành cho bạn (Admin/Chủ tool): Luôn kích hoạt thành công ngay lập tức
+        if key == "IUH-ADMIN-VIP-2026" or key.startswith("IUH-DEV-"):
+            lic_data = {
+                "is_licensed": True,
+                "key": key,
+                "hwid": hwid,
+                "mssv": mssv or "ALL",
+                "customer_name": "Admin Master",
+                "type": "Admin Master Key",
+                "expires_at": "2099-12-31",
+                "activated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "last_verified": time.time()
+            }
+            self._save_cached_license(lic_data)
+            return {
+                "success": True,
+                "message": "Kích hoạt Master Key thành công (Vĩnh viễn)!",
+                "license": lic_data
+            }
 
+        # 2. Key của khách hàng: Yêu cầu đã cấu hình Google Apps Script URL
+        if not self.api_url:
             return {
                 "success": False,
-                "error": "Chưa cấu hình URL hệ thống License Server (Google Apps Script). Vui lòng cập nhật trong config."
+                "error": "Chưa cấu hình URL hệ thống License Server (Google Apps Script). Vui lòng cấu hình LICENSE_API_URL."
             }
 
         try:
@@ -122,14 +124,21 @@ class LicenseManager:
                 "mssv": mssv.strip(),
                 "hwid": hwid
             })
-            req_url = f"{self.api_url}?{params}"
+            sep = "&" if "?" in self.api_url else "?"
+            req_url = f"{self.api_url}{sep}{params}"
             req = urllib.request.Request(
                 req_url,
-                headers={"User-Agent": "IUH-Hunter-License/1.0"}
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) IUH-Hunter/1.0"}
             )
-            with urllib.request.urlopen(req, timeout=10, context=self.ssl_context) as resp:
+            with urllib.request.urlopen(req, timeout=8, context=self.ssl_context) as resp:
                 raw_data = resp.read().decode("utf-8")
-                res = json.loads(raw_data)
+                try:
+                    res = json.loads(raw_data)
+                except Exception:
+                    return {
+                        "success": False,
+                        "error": "Máy chủ Google Apps Script chưa phản hồi JSON hợp lệ. Vui lòng kiểm tra quyền truy cập (Who has access: Anyone)."
+                    }
 
                 if res.get("valid") or res.get("success"):
                     lic_data = {

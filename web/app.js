@@ -411,6 +411,9 @@ async function handleActivateLicense(e) {
     submitBtn.textContent = 'ĐANG XÁC THỰC...';
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+
   try {
     const res = await fetch('/api/license/activate', {
       method: 'POST',
@@ -418,8 +421,10 @@ async function handleActivateLicense(e) {
       body: JSON.stringify({
         key: key,
         mssv: appState.userMssv || elements.inputMssv.value.trim()
-      })
+      }),
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
     const data = await res.json();
     if (data.success) {
       sfx.playSuccess();
@@ -430,8 +435,13 @@ async function handleActivateLicense(e) {
       alert(`⚠️ ${data.error || 'License Key không hợp lệ.'}`);
     }
   } catch (err) {
-    alert('Lỗi kết nối khi gửi yêu cầu kích hoạt Key.');
+    if (err.name === 'AbortError') {
+      alert('⚠️ Quá thời gian chờ phản hồi (Timeout). Vui lòng thử lại!');
+    } else {
+      alert('Lỗi kết nối khi gửi yêu cầu kích hoạt Key.');
+    }
   } finally {
+    clearTimeout(timeoutId);
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.textContent = '⚡ Kích Hoạt Ngay';
