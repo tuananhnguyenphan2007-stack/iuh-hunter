@@ -20,6 +20,7 @@ from typing import Dict, Any
 from iuh_client import IUHClient
 from discord_notifier import DiscordNotifier
 from scanner import ActivityScanner
+from license_manager import LicenseManager
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
@@ -33,7 +34,8 @@ def load_config() -> Dict[str, Any]:
         "auto_register": True,
         "keywords": [],
         "ping_everyone": True,
-        "phpsessid": ""
+        "phpsessid": "",
+        "license_api_url": ""
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -48,6 +50,8 @@ def load_config() -> Dict[str, Any]:
         default_config["webhook_url"] = os.environ["WEBHOOK_URL"]
     if os.environ.get("PHPSESSID"):
         default_config["phpsessid"] = os.environ["PHPSESSID"]
+    if os.environ.get("LICENSE_API_URL"):
+        default_config["license_api_url"] = os.environ["LICENSE_API_URL"]
     if os.environ.get("INTERVAL_SECONDS"):
         try:
             default_config["interval_seconds"] = int(os.environ["INTERVAL_SECONDS"])
@@ -70,6 +74,7 @@ app_config = load_config()
 client = IUHClient(phpsessid=app_config.get("phpsessid"))
 notifier = DiscordNotifier(webhook_url=app_config.get("webhook_url"))
 scanner = ActivityScanner(client=client, notifier=notifier)
+license_mgr = LicenseManager(api_url=app_config.get("license_api_url", ""))
 scanner.config.update(app_config)
 
 
@@ -169,7 +174,11 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def handle_api_get(self, path: str, query: Dict[str, Any]):
         if path == "/api/status":
-            self.send_json(scanner.get_status())
+            st = scanner.get_status()
+            st["license"] = license_mgr.get_license_status()
+            self.send_json(st)
+        elif path == "/api/license/status":
+            self.send_json(license_mgr.get_license_status())
         elif path == "/api/captcha":
             res = client.get_captcha_base64()
             self.send_json(res)
@@ -183,7 +192,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/logs":
             self.send_json({"logs": scanner.logs})
         elif path == "/api/config":
-            self.send_json(scanner.config)
+            cfg_data = dict(scanner.config)
+            cfg_data["license_api_url"] = app_config.get("license_api_url", "")
+            self.send_json(cfg_data)
         else:
             self.send_json({"error": "API route not found"}, 404)
 
@@ -214,6 +225,23 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "session_status": check
             })
 
+        elif path == "/api/license/activate":
+            key = body.get("key", "")
+            mssv = body.get("mssv", "") or client.user_info.get("mssv", "")
+            res = license_mgr.activate_key(key=key, mssv=mssv)
+            if res.get("success"):
+                scanner.log(f"Kích hoạt License thành công! Hạn dùng: {res.get('license', {}).get('expires_at')}", "success")
+            else:
+                scanner.log(f"Kích hoạt License thất bại: {res.get('error')}", "warning")
+            self.send_json(res)
+
+        elif path == "/api/license/config":
+            api_url = body.get("api_url", "")
+            license_mgr.set_api_url(api_url)
+            app_config["license_api_url"] = api_url
+            save_config(app_config)
+            self.send_json({"success": True, "api_url": api_url})
+
         elif path == "/api/discord/test":
             webhook_url = body.get("webhook_url")
             if webhook_url:
@@ -230,10 +258,20 @@ class RequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/config":
             scanner.update_config(body)
             app_config.update(scanner.config)
+            if "license_api_url" in body:
+                app_config["license_api_url"] = body["license_api_url"]
+                license_mgr.set_api_url(body["license_api_url"])
             save_config(app_config)
             self.send_json({"success": True, "config": scanner.config})
 
         elif path == "/api/scanner/start":
+            current_mssv = client.user_info.get("mssv", "")
+            if not license_mgr.is_valid_to_run(current_mssv):
+                lic_stat = license_mgr.get_license_status()
+                err_msg = lic_stat.get("error") or "Vui lòng kích hoạt License Key để bắt đầu săn slot!"
+                scanner.log(f"Bị chặn: {err_msg}", "warning")
+                self.send_json({"success": False, "error": err_msg})
+                return
             res = scanner.start()
             self.send_json(res)
 
@@ -242,6 +280,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.send_json(res)
 
         elif path == "/api/register":
+            current_mssv = client.user_info.get("mssv", "")
+            if not license_mgr.is_valid_to_run(current_mssv):
+                self.send_json({"success": False, "error": "Vui lòng kích hoạt License Key để đăng ký hoạt động."})
+                return
             reg_url = body.get("register_url")
             act_id = body.get("activity_id")
             scanner.log(f"Người dùng gửi yêu cầu đăng ký thủ công cho: {act_id or reg_url}", "info")

@@ -80,11 +80,26 @@ let appState = {
 // DOM Elements
 const elements = {
   headerStatusDot: document.getElementById('headerStatusDot'),
+  licenseStatusPill: document.getElementById('licenseStatusPill'),
+  licenseStatusLabel: document.getElementById('licenseStatusLabel'),
+  licenseIcon: document.getElementById('licenseIcon'),
   scannerStatusPill: document.getElementById('scannerStatusPill'),
   scannerStatusLabel: document.getElementById('scannerStatusLabel'),
   btnToggleScanner: document.getElementById('btnToggleScanner'),
   toggleScannerText: document.getElementById('toggleScannerText'),
   toggleScannerIcon: document.getElementById('toggleScannerIcon'),
+
+  licenseModal: document.getElementById('licenseModal'),
+  btnCloseLicenseModal: document.getElementById('btnCloseLicenseModal'),
+  formActivateLicense: document.getElementById('formActivateLicense'),
+  inputLicenseKey: document.getElementById('inputLicenseKey'),
+  lblHwid: document.getElementById('lblHwid'),
+  btnCopyHwid: document.getElementById('btnCopyHwid'),
+  lblLicenseState: document.getElementById('lblLicenseState'),
+  rowLicenseExpiry: document.getElementById('rowLicenseExpiry'),
+  lblLicenseExpiry: document.getElementById('lblLicenseExpiry'),
+  rowLicenseMssv: document.getElementById('rowLicenseMssv'),
+  lblLicenseMssv: document.getElementById('lblLicenseMssv'),
 
   statSession: document.getElementById('statSession'),
   statSessionUser: document.getElementById('statSessionUser'),
@@ -147,6 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTabs();
   setupEventListeners();
   loadInitialConfig();
+  checkLicenseStatus();
   fetchCaptcha();
   startPollingLoop();
 });
@@ -281,6 +297,146 @@ function setupEventListeners() {
   elements.btnClearLogs.addEventListener('click', () => {
     elements.terminalWindow.innerHTML = '<div class="terminal-line text-muted">[SYSTEM] Đã dọn dẹp nhật ký log.</div>';
   });
+
+  // License Modal Events
+  if (elements.licenseStatusPill) {
+    elements.licenseStatusPill.addEventListener('click', openLicenseModal);
+  }
+  if (elements.btnCloseLicenseModal) {
+    elements.btnCloseLicenseModal.addEventListener('click', closeLicenseModal);
+  }
+  if (elements.licenseModal) {
+    elements.licenseModal.addEventListener('click', (e) => {
+      if (e.target === elements.licenseModal) closeLicenseModal();
+    });
+  }
+  if (elements.btnCopyHwid) {
+    elements.btnCopyHwid.addEventListener('click', copyHwid);
+  }
+  if (elements.formActivateLicense) {
+    elements.formActivateLicense.addEventListener('submit', handleActivateLicense);
+  }
+}
+
+// License Management
+let currentLicense = null;
+
+function openLicenseModal() {
+  if (elements.licenseModal) {
+    elements.licenseModal.classList.add('active');
+    checkLicenseStatus();
+  }
+}
+
+function closeLicenseModal() {
+  if (elements.licenseModal) {
+    elements.licenseModal.classList.remove('active');
+  }
+}
+
+function copyHwid() {
+  const hwid = elements.lblHwid ? elements.lblHwid.textContent.trim() : '';
+  if (hwid && hwid !== 'Đang tải...') {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(hwid).then(() => {
+        elements.btnCopyHwid.textContent = '✅ Đã copy!';
+        setTimeout(() => { if (elements.btnCopyHwid) elements.btnCopyHwid.textContent = '📋 Copy'; }, 2000);
+      }).catch(() => {
+        prompt('Mã máy tính (HWID) của bạn:', hwid);
+      });
+    } else {
+      prompt('Mã máy tính (HWID) của bạn:', hwid);
+    }
+  }
+}
+
+async function checkLicenseStatus() {
+  try {
+    const res = await fetch('/api/license/status');
+    const data = await res.json();
+    currentLicense = data;
+    updateLicenseUI(data);
+  } catch (e) {
+    console.error('Lỗi kiểm tra license:', e);
+  }
+}
+
+function updateLicenseUI(lic) {
+  if (!lic) return;
+  currentLicense = lic;
+
+  if (elements.lblHwid) elements.lblHwid.textContent = lic.hwid || 'N/A';
+
+  if (lic.is_licensed) {
+    if (elements.licenseStatusPill) {
+      elements.licenseStatusPill.classList.add('is-active');
+      elements.licenseIcon.textContent = '👑';
+      elements.licenseStatusLabel.textContent = `PRO (${lic.plan_type || 'Active'})`;
+    }
+    if (elements.lblLicenseState) {
+      elements.lblLicenseState.textContent = '🟢 Bản quyền hợp lệ';
+      elements.lblLicenseState.className = 'info-value text-green';
+    }
+    if (elements.rowLicenseExpiry) {
+      elements.rowLicenseExpiry.style.display = 'flex';
+      elements.lblLicenseExpiry.textContent = lic.expires_at || 'Vĩnh viễn';
+    }
+    if (elements.rowLicenseMssv && lic.mssv && lic.mssv !== 'ALL') {
+      elements.rowLicenseMssv.style.display = 'flex';
+      elements.lblLicenseMssv.textContent = lic.mssv;
+    }
+  } else {
+    if (elements.licenseStatusPill) {
+      elements.licenseStatusPill.classList.remove('is-active');
+      elements.licenseIcon.textContent = '🔑';
+      elements.licenseStatusLabel.textContent = 'Kích hoạt Key';
+    }
+    if (elements.lblLicenseState) {
+      elements.lblLicenseState.textContent = '🔴 Chưa kích hoạt';
+      elements.lblLicenseState.className = 'info-value text-danger';
+    }
+    if (elements.rowLicenseExpiry) elements.rowLicenseExpiry.style.display = 'none';
+    if (elements.rowLicenseMssv) elements.rowLicenseMssv.style.display = 'none';
+  }
+}
+
+async function handleActivateLicense(e) {
+  e.preventDefault();
+  const key = elements.inputLicenseKey.value.trim();
+  if (!key) return;
+
+  const submitBtn = document.getElementById('btnSubmitLicense');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'ĐANG XÁC THỰC...';
+  }
+
+  try {
+    const res = await fetch('/api/license/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: key,
+        mssv: appState.userMssv || elements.inputMssv.value.trim()
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      sfx.playSuccess();
+      alert(`🎉 ${data.message || 'Kích hoạt bản quyền thành công!'}`);
+      updateLicenseUI(data.license);
+      closeLicenseModal();
+    } else {
+      alert(`⚠️ ${data.error || 'License Key không hợp lệ.'}`);
+    }
+  } catch (err) {
+    alert('Lỗi kết nối khi gửi yêu cầu kích hoạt Key.');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '⚡ Kích Hoạt Ngay';
+    }
+  }
 }
 
 // Handle Login
@@ -479,6 +635,11 @@ async function toggleScanner() {
       if (data.success) {
         setScannerRunningState(true);
         sfx.playSuccess();
+      } else {
+        alert(`⚠️ ${data.error || 'Không thể bắt đầu săn slot.'}`);
+        if (data.error && (data.error.includes('bản quyền') || data.error.includes('Key'))) {
+          openLicenseModal();
+        }
       }
     } catch (e) {
       console.error(e);
@@ -632,6 +793,11 @@ async function startPollingLoop() {
       // Update session status if changed
       if (data.is_logged_in !== appState.isLoggedIn) {
         updateSessionUI(data.is_logged_in, data.user_info?.mssv);
+      }
+
+      // Update License Status
+      if (data.license) {
+        updateLicenseUI(data.license);
       }
 
       // Update Realtime Logs

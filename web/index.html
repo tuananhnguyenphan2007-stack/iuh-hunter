@@ -31,6 +31,10 @@
       </div>
 
       <div class="header-actions">
+        <div class="license-status-pill" id="licenseStatusPill" title="Bấm để xem thông tin hoặc kích hoạt bản quyền">
+          <span class="license-icon" id="licenseIcon">🔑</span>
+          <span id="licenseStatusLabel">Đang kiểm tra...</span>
+        </div>
         <div class="scanner-status-pill" id="scannerStatusPill">
           <span class="pulse-indicator" id="scannerPulse"></span>
           <span id="scannerStatusLabel">Đang dừng</span>
@@ -307,6 +311,61 @@
       <div>IUH Activity Hunter • Dành riêng cho sinh viên Đại học Công nghiệp TP.HCM (IUH)</div>
       <div class="text-muted">Cổng thông tin gốc: <a href="https://doantn.iuh.edu.vn" target="_blank" rel="noopener">doantn.iuh.edu.vn</a></div>
     </footer>
+  </div>
+
+  <!-- Modal Kích Hoạt Bản Quyền (License Key Modal) -->
+  <div class="modal-overlay" id="licenseModal">
+    <div class="modal-card glass-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="modal-icon">🔐</span> Kích Hoạt Bản Quyền IUH Hunter
+        </div>
+        <button class="modal-close" id="btnCloseLicenseModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Nhập mã <strong>License Key</strong> để mở khóa tính năng săn slot và tự động đăng ký 24/7.
+        </p>
+
+        <div class="license-info-box">
+          <div class="info-row">
+            <span class="info-label">Mã máy tính (HWID):</span>
+            <span class="info-value font-mono" id="lblHwid">Đang tải...</span>
+            <button type="button" class="btn btn-ghost btn-xs" id="btnCopyHwid" title="Sao chép HWID">📋 Copy</button>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Trạng thái:</span>
+            <span class="info-value" id="lblLicenseState">Chưa kích hoạt</span>
+          </div>
+          <div class="info-row" id="rowLicenseExpiry" style="display:none;">
+            <span class="info-label">Hạn sử dụng:</span>
+            <span class="info-value text-green" id="lblLicenseExpiry">--</span>
+          </div>
+          <div class="info-row" id="rowLicenseMssv" style="display:none;">
+            <span class="info-label">MSSV cấp phép:</span>
+            <span class="info-value font-mono" id="lblLicenseMssv">--</span>
+          </div>
+        </div>
+
+        <form id="formActivateLicense" class="license-form">
+          <div class="form-group">
+            <label class="form-label" for="inputLicenseKey">Mã License Key:</label>
+            <input type="text" id="inputLicenseKey" class="form-input font-mono" placeholder="Ví dụ: IUH-VIP-XXXX-YYYY" required autocomplete="off">
+          </div>
+          <button type="submit" class="btn btn-primary btn-block btn-glow" id="btnSubmitLicense">
+            ⚡ Kích Hoạt Ngay
+          </button>
+        </form>
+
+        <div class="license-footer-note">
+          <span>Chưa có Key bản quyền? Liên hệ Admin để nhận Key dùng thử hoặc mua gói:</span>
+          <div class="contact-badges">
+            <span class="badge badge-purple">Zalo / Telegram Admin</span>
+            <span class="badge badge-accent">Hỗ trợ 24/7</span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
