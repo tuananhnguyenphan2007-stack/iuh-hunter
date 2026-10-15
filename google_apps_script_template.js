@@ -66,6 +66,29 @@ function doGet(e) {
   }
 
   // =========================================================================
+  // TÍNH NĂNG 1.5: LẤY DANH SÁCH KEY (CHO BẢNG ADMIN TRÊN WEB)
+  // =========================================================================
+  if (action === "list_keys" || action === "danhsach") {
+    var list = [];
+    for (var i = 1; i < data.length; i++) {
+      var r = data[i];
+      if (r[0]) {
+        list.push({
+          key: r[0].toString(),
+          customer_name: (r[1] || "").toString(),
+          mssv: (r[2] || "").toString(),
+          plan_type: (r[3] || "").toString(),
+          hwid: (r[4] || "").toString(),
+          expires_at: r[5] ? Utilities.formatDate(new Date(r[5]), "GMT+7", "yyyy-MM-dd") : "",
+          status: (r[6] || "Active").toString(),
+          activated_at: r[7] ? Utilities.formatDate(new Date(r[7]), "GMT+7", "yyyy-MM-dd HH:mm:ss") : ""
+        });
+      }
+    }
+    return createJsonResponse({ success: true, keys: list });
+  }
+
+  // =========================================================================
   // CÁC HÀNH ĐỘNG CẦN TÌM KEY CÓ SẴN (Check, Activate, Ban, Unban, Extend, Reset)
   // =========================================================================
   if (!key) {

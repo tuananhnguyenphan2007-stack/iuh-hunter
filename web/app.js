@@ -123,7 +123,8 @@ let appState = {
   scanCount: 0,
   registeredCount: 0,
   logs: [],
-  activities: []
+  activities: [],
+  hasLoadedAdminKeys: false
 };
 
 // DOM Elements
@@ -197,7 +198,22 @@ const elements = {
   activitiesContainer: document.getElementById('activitiesContainer'),
 
   terminalWindow: document.getElementById('terminalWindow'),
-  btnClearLogs: document.getElementById('btnClearLogs')
+  btnClearLogs: document.getElementById('btnClearLogs'),
+
+  adminPanel: document.getElementById('adminPanel'),
+  btnRefreshKeysList: document.getElementById('btnRefreshKeysList'),
+  formAdminCreateKey: document.getElementById('formAdminCreateKey'),
+  adminCustomerName: document.getElementById('adminCustomerName'),
+  adminPlanDays: document.getElementById('adminPlanDays'),
+  adminCustomerMssv: document.getElementById('adminCustomerMssv'),
+  btnSubmitCreateKey: document.getElementById('btnSubmitCreateKey'),
+  adminCreateResult: document.getElementById('adminCreateResult'),
+  resKeyName: document.getElementById('resKeyName'),
+  resKeyDetails: document.getElementById('resKeyDetails'),
+  resKeyMessage: document.getElementById('resKeyMessage'),
+  btnCopyCustomerMessage: document.getElementById('btnCopyCustomerMessage'),
+  adminKeyCount: document.getElementById('adminKeyCount'),
+  tbodyAdminKeys: document.getElementById('tbodyAdminKeys')
 };
 
 // Helpers
@@ -372,6 +388,15 @@ function setupEventListeners() {
   if (elements.formActivateLicense) {
     elements.formActivateLicense.addEventListener('submit', handleActivateLicense);
   }
+  if (elements.btnRefreshKeysList) {
+    elements.btnRefreshKeysList.addEventListener('click', fetchAdminKeysList);
+  }
+  if (elements.formAdminCreateKey) {
+    elements.formAdminCreateKey.addEventListener('submit', handleAdminCreateKey);
+  }
+  if (elements.btnCopyCustomerMessage) {
+    elements.btnCopyCustomerMessage.addEventListener('click', copyCustomerMessage);
+  }
 }
 
 // License Management
@@ -445,7 +470,21 @@ function updateLicenseUI(lic) {
     if (elements.btnResetLicense) {
       elements.btnResetLicense.style.display = 'inline-block';
     }
+
+    // Kiểm tra nếu là Admin Master Key -> Mở Bảng Quản Trị VIP
+    if (lic.key === 'IUH-ADMIN-VIP-2026') {
+      if (elements.adminPanel) {
+        elements.adminPanel.style.display = 'block';
+        if (!appState.hasLoadedAdminKeys) {
+          appState.hasLoadedAdminKeys = true;
+          fetchAdminKeysList();
+        }
+      }
+    } else {
+      if (elements.adminPanel) elements.adminPanel.style.display = 'none';
+    }
   } else {
+    if (elements.adminPanel) elements.adminPanel.style.display = 'none';
     if (elements.licenseStatusPill) {
       elements.licenseStatusPill.classList.remove('is-active');
       elements.licenseIcon.textContent = '🔑';
@@ -934,3 +973,265 @@ function updateTerminalLogs(logs) {
   elements.terminalWindow.innerHTML = html;
   elements.terminalWindow.scrollTop = elements.terminalWindow.scrollHeight;
 }
+
+// =========================================================================
+// ADMIN VIP MANAGEMENT LOGIC (ĐỒNG BỘ GOOGLE SHEETS)
+// =========================================================================
+
+async function fetchAdminKeysList() {
+  if (!elements.tbodyAdminKeys) return;
+  elements.tbodyAdminKeys.innerHTML = `
+    <tr>
+      <td colspan="6" class="text-center text-muted" style="padding: 24px;">
+        <span class="btn-icon">↻</span> Đang tải danh sách Key từ Google Sheets...
+      </td>
+    </tr>
+  `;
+
+  try {
+    const res = await fetch('/api/admin/list-keys');
+    const data = await res.json();
+
+    if (!data.success) {
+      elements.tbodyAdminKeys.innerHTML = `
+        <tr>
+          <td colspan="6" class="text-center text-danger" style="padding: 20px;">
+            ⚠️ Không thể tải danh sách: ${escapeHtml(data.error || 'Lỗi không xác định')}
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const keys = data.keys || [];
+    if (elements.adminKeyCount) elements.adminKeyCount.textContent = keys.length;
+
+    if (keys.length === 0) {
+      elements.tbodyAdminKeys.innerHTML = `
+        <tr>
+          <td colspan="6" class="text-center text-muted" style="padding: 24px;">
+            Chưa có License Key nào trên Google Sheet. Bạn hãy tạo Key đầu tiên ở cột bên trái!
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const rows = keys.map(k => {
+      const isBanned = (k.status || '').toLowerCase() === 'banned';
+      const statusBadge = isBanned
+        ? '<span class="badge badge-danger">Đã khóa (Banned)</span>'
+        : '<span class="badge badge-success">Đang hoạt động</span>';
+
+      const hwidDisplay = k.hwid 
+        ? `<div class="text-dim" style="font-size: 0.72rem;" title="Mã thiết bị: ${escapeHtml(k.hwid)}">💻 Khóa máy: ${escapeHtml(k.hwid.substring(0, 8))}...</div>` 
+        : '<div class="text-muted" style="font-size: 0.72rem;">Chưa gắn máy</div>';
+
+      return `
+        <tr>
+          <td>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <code class="font-mono text-accent" style="font-weight: 700; font-size: 0.88rem;">${escapeHtml(k.key)}</code>
+              <button class="btn btn-ghost btn-sm" style="padding: 2px 6px; font-size: 0.75rem;" onclick="copyTextToClipboard('${escapeHtml(k.key)}', 'Đã chép mã Key!')" title="Sao chép Key">📋</button>
+            </div>
+            ${hwidDisplay}
+          </td>
+          <td>
+            <strong>${escapeHtml(k.customer_name || 'Khách hàng')}</strong>
+            <div class="text-dim" style="font-size: 0.75rem;">${escapeHtml(k.plan_type || '')}</div>
+          </td>
+          <td>
+            ${k.mssv ? `<span class="badge badge-purple">${escapeHtml(k.mssv)}</span>` : '<span class="text-muted">Mọi MSSV</span>'}
+          </td>
+          <td>
+            <span class="font-mono">${escapeHtml(k.expires_at || 'Vĩnh viễn')}</span>
+          </td>
+          <td>${statusBadge}</td>
+          <td>
+            <div class="action-btn-group">
+              ${isBanned 
+                ? `<button class="btn btn-ghost btn-sm text-green" style="font-size: 0.75rem; padding: 3px 8px;" onclick="window.handleAdminKeyAction('unban', '${escapeHtml(k.key)}')">🔓 Mở khóa</button>`
+                : `<button class="btn btn-ghost btn-sm text-danger" style="font-size: 0.75rem; padding: 3px 8px;" onclick="window.handleAdminKeyAction('ban', '${escapeHtml(k.key)}')">🔒 Khóa</button>`
+              }
+              <button class="btn btn-ghost btn-sm" style="font-size: 0.75rem; padding: 3px 8px;" onclick="window.handleAdminKeyExtend('${escapeHtml(k.key)}')">⏳ +Ngày</button>
+              <button class="btn btn-ghost btn-sm" style="font-size: 0.75rem; padding: 3px 8px;" onclick="window.handleAdminKeyAction('reset_device', '${escapeHtml(k.key)}')" title="Đổi máy mới cho khách">🔄 Đổi máy</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    elements.tbodyAdminKeys.innerHTML = rows;
+
+  } catch (err) {
+    console.error('Lỗi khi fetch danh sách keys:', err);
+    elements.tbodyAdminKeys.innerHTML = `
+      <tr>
+        <td colspan="6" class="text-center text-danger" style="padding: 20px;">
+          Lỗi kết nối khi gọi Google Sheets.
+        </td>
+      </tr>
+    `;
+  }
+}
+
+async function handleAdminCreateKey(e) {
+  if (e) e.preventDefault();
+  const customerName = elements.adminCustomerName.value.trim();
+  const days = parseInt(elements.adminPlanDays.value, 10);
+  const mssv = elements.adminCustomerMssv.value.trim();
+
+  if (!customerName) {
+    alert('Vui lòng nhập tên khách hàng!');
+    elements.adminCustomerName.focus();
+    return;
+  }
+
+  const selectElem = elements.adminPlanDays;
+  const planText = selectElem.options[selectElem.selectedIndex].text;
+
+  elements.btnSubmitCreateKey.disabled = true;
+  elements.btnSubmitCreateKey.textContent = '⏳ ĐANG GHI VÀO GOOGLE SHEETS...';
+
+  try {
+    const res = await fetch('/api/admin/create-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer_name: customerName,
+        plan_type: planText,
+        days: days,
+        mssv: mssv
+      })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      sfx.playSuccess();
+      const generatedKey = data.key;
+      const expDate = data.expires_at;
+
+      // Hiển thị hộp kết quả
+      if (elements.adminCreateResult) {
+        elements.adminCreateResult.style.display = 'block';
+      }
+      if (elements.resKeyName) elements.resKeyName.textContent = generatedKey;
+      if (elements.resKeyDetails) {
+        elements.resKeyDetails.textContent = `Khách: ${customerName} | Gói: ${planText} | Hạn dùng: ${expDate}`;
+      }
+
+      // Tin nhắn gửi khách hàng chuyên nghiệp
+      const webUrl = window.location.origin;
+      const msg = [
+        `🎉 BẢN QUYỀN IUH ACTIVITY HUNTER PRO 🎉`,
+        `Xin chào ${customerName},`,
+        `Cảm ơn bạn đã đăng ký sử dụng Tool Săn Hoạt Động & Điểm Rèn Luyện IUH!`,
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `🔑 License Key: ${generatedKey}`,
+        `📦 Gói sử dụng: ${planText}`,
+        `⏳ Hạn dùng đến: ${expDate}`,
+        `👤 MSSV áp dụng: ${mssv ? mssv : 'Tự động nhận diện khi kích hoạt'}`,
+        `🌐 Link truy cập Web: ${webUrl}`,
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `📌 Hướng dẫn kích hoạt:`,
+        `1. Mở link Web trên máy tính hoặc điện thoại: ${webUrl}`,
+        `2. Bấm vào nút "🔑 Kích hoạt Key" ở góc trên bên phải màn hình.`,
+        `3. Dán mã Key: "${generatedKey}" và bấm "Kích Hoạt Ngay".`,
+        `Chúc bạn săn được thật nhiều slot hoạt động IUH thành công! 🚀`
+      ].join('\n');
+
+      if (elements.resKeyMessage) {
+        elements.resKeyMessage.value = msg;
+      }
+
+      // Reset form
+      elements.adminCustomerName.value = '';
+      elements.adminCustomerMssv.value = '';
+
+      // Tự động làm mới danh sách bảng
+      fetchAdminKeysList();
+    } else {
+      alert(`⚠️ Không thể tạo Key: ${data.error || 'Lỗi không xác định'}`);
+    }
+  } catch (err) {
+    alert('Lỗi kết nối khi gửi yêu cầu tạo Key.');
+    console.error(err);
+  } finally {
+    elements.btnSubmitCreateKey.disabled = false;
+    elements.btnSubmitCreateKey.textContent = '⚡ TẠO KEY & GHI VÀO GOOGLE SHEETS';
+  }
+}
+
+function copyCustomerMessage() {
+  if (!elements.resKeyMessage) return;
+  const text = elements.resKeyMessage.value;
+  if (!text) return;
+
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => {
+      elements.btnCopyCustomerMessage.textContent = '✅ Đã copy tin nhắn!';
+      setTimeout(() => {
+        elements.btnCopyCustomerMessage.textContent = '📋 Sao chép tin nhắn gửi cho khách';
+      }, 2500);
+    }).catch(() => {
+      elements.resKeyMessage.select();
+      document.execCommand('copy');
+      alert('Đã copy tin nhắn gửi khách!');
+    });
+  } else {
+    elements.resKeyMessage.select();
+    document.execCommand('copy');
+    alert('Đã copy tin nhắn gửi khách!');
+  }
+}
+
+window.copyTextToClipboard = function(text, successMsg = 'Đã sao chép!') {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => {
+      alert(successMsg);
+    });
+  } else {
+    prompt('Sao chép mã:', text);
+  }
+};
+
+window.handleAdminKeyExtend = async function(key) {
+  const input = prompt(`Nhập số ngày muốn gia hạn thêm cho Key "${key}":`, '30');
+  if (input === null) return;
+  const days = parseInt(input.trim(), 10);
+  if (isNaN(days) || days <= 0) {
+    alert('Vui lòng nhập số ngày hợp lệ!');
+    return;
+  }
+  await window.handleAdminKeyAction('extend', key, days);
+};
+
+window.handleAdminKeyAction = async function(action, key, days = 30) {
+  let confirmMsg = '';
+  if (action === 'ban') confirmMsg = `Bạn có chắc muốn KHÓA (Ban) License Key "${key}"? Khách sẽ không thể dùng tool nữa!`;
+  else if (action === 'unban') confirmMsg = `MỞ KHÓA (Unban) License Key "${key}"?`;
+  else if (action === 'reset_device') confirmMsg = `RESET thiết bị cho Key "${key}"? Khách có thể đổi sang đăng nhập trên máy tính / điện thoại mới!`;
+  else if (action === 'extend') confirmMsg = `Gia hạn thêm ${days} ngày cho Key "${key}"?`;
+
+  if (confirmMsg && !confirm(confirmMsg)) return;
+
+  try {
+    const res = await fetch('/api/admin/action-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: action, key: key, days: days })
+    });
+    const data = await res.json();
+    if (data.success) {
+      sfx.playSuccess();
+      alert(`✅ Thao tác thành công: ${data.message || 'Đã cập nhật trên Google Sheets!'}`);
+      fetchAdminKeysList();
+    } else {
+      alert(`⚠️ Thất bại: ${data.error || 'Có lỗi xảy ra'}`);
+    }
+  } catch (err) {
+    alert('Lỗi kết nối khi gửi thao tác quản trị.');
+    console.error(err);
+  }
+};
+

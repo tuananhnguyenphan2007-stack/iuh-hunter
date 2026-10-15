@@ -56,6 +56,29 @@ def save_config(cfg: Dict[str, Any]):
         print(f"Lỗi lưu config.json: {e}")
 
 
+import ssl
+import urllib.request
+import urllib.parse
+
+
+def call_sheets_api(api_url: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    if not api_url:
+        return {"success": False, "error": "Chưa cấu hình LICENSE_API_URL."}
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    query_str = urllib.parse.urlencode(params)
+    sep = "&" if "?" in api_url else "?"
+    full_url = f"{api_url}{sep}{query_str}"
+    req = urllib.request.Request(full_url, headers={"User-Agent": "Mozilla/5.0 IUH-Hunter-Admin/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=12, context=ctx) as resp:
+            data = resp.read().decode("utf-8")
+            return json.loads(data)
+    except Exception as e:
+        return {"success": False, "error": f"Lỗi gọi Google Sheets: {str(e)}"}
+
+
 # Khởi tạo quản lý phiên đa người dùng
 app_config = load_config()
 session_mgr = SessionManager(api_url=app_config.get("license_api_url", ""))
@@ -209,6 +232,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             cfg_data["license_api_url"] = session_mgr.api_url
             self.send_json(cfg_data)
 
+        elif path == "/api/admin/list-keys":
+            lic_stat = session.license_mgr.get_license_status(client_hwid=did)
+            if not lic_stat.get("is_licensed") or lic_stat.get("key") != "IUH-ADMIN-VIP-2026":
+                self.send_json({"success": False, "error": "Chỉ Admin Master Key mới có quyền truy cập."}, 403)
+                return
+            res = call_sheets_api(session_mgr.api_url, {"action": "list_keys"})
+            self.send_json(res)
+
         else:
             self.send_json({"error": "API route not found"}, 404)
 
@@ -320,6 +351,41 @@ class RequestHandler(BaseHTTPRequestHandler):
                 session.scanner.log(f"Đăng ký thành công: {res.get('message')}", "success")
             else:
                 session.scanner.log(f"Đăng ký thất bại: {res.get('error') or res.get('message')}", "warning")
+            self.send_json(res)
+
+        elif path == "/api/admin/create-key":
+            lic_stat = session.license_mgr.get_license_status(client_hwid=did)
+            if not lic_stat.get("is_licensed") or lic_stat.get("key") != "IUH-ADMIN-VIP-2026":
+                self.send_json({"success": False, "error": "Chỉ Admin Master Key mới có quyền tạo Key."}, 403)
+                return
+            customer_name = body.get("customer_name", "Khách hàng")
+            plan_type = body.get("plan_type", "Gói 1 Tháng")
+            days = body.get("days", 30)
+            mssv = body.get("mssv", "")
+            key_name = body.get("key", "")
+            res = call_sheets_api(session_mgr.api_url, {
+                "action": "create_key",
+                "key": key_name,
+                "customer_name": customer_name,
+                "plan_type": plan_type,
+                "days": days,
+                "mssv": mssv
+            })
+            self.send_json(res)
+
+        elif path == "/api/admin/action-key":
+            lic_stat = session.license_mgr.get_license_status(client_hwid=did)
+            if not lic_stat.get("is_licensed") or lic_stat.get("key") != "IUH-ADMIN-VIP-2026":
+                self.send_json({"success": False, "error": "Chỉ Admin Master Key mới có quyền thao tác."}, 403)
+                return
+            action = body.get("action", "")
+            key_target = body.get("key", "")
+            days = body.get("days", 30)
+            res = call_sheets_api(session_mgr.api_url, {
+                "action": action,
+                "key": key_target,
+                "days": days
+            })
             self.send_json(res)
 
         else:

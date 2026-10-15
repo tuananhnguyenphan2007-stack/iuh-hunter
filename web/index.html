@@ -85,6 +85,91 @@
       </div>
     </section>
 
+    <!-- Admin VIP Panel (Chỉ hiển thị cho Admin Master Key IUH-ADMIN-VIP-2026) -->
+    <section class="admin-panel glass-card" id="adminPanel" style="display: none; margin-bottom: 24px;">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="title-icon">👑</span> Bảng Quản Trị Cấp Key Bản Quyền (Admin VIP)
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnRefreshKeysList">
+          <span class="btn-icon">↻</span> Đồng bộ Google Sheets
+        </button>
+      </div>
+
+      <div class="card-body">
+        <div class="admin-grid">
+          <!-- Cột Trái: Tạo Key Mới -->
+          <div class="admin-create-col">
+            <h4 class="admin-subheading">⚡ Tạo License Key Bán Cho Khách</h4>
+            <form id="formAdminCreateKey" class="admin-form" onsubmit="return false;">
+              <div class="form-group">
+                <label for="adminCustomerName">Tên khách hàng (Zalo/Facebook):</label>
+                <input type="text" id="adminCustomerName" class="form-input" placeholder="Ví dụ: Nguyễn Văn A" required>
+              </div>
+
+              <div class="form-row" style="display: flex; gap: 12px;">
+                <div class="form-group" style="flex: 1;">
+                  <label for="adminPlanDays">Gói thời hạn:</label>
+                  <select id="adminPlanDays" class="form-input">
+                    <option value="30">Gói 1 Tháng (30 Ngày)</option>
+                    <option value="60">Gói 2 Tháng (60 Ngày)</option>
+                    <option value="120">Gói 1 Học Kỳ (120 Ngày)</option>
+                    <option value="99999">Gói Trọn Đời (Vĩnh Viễn)</option>
+                  </select>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                  <label for="adminCustomerMssv">MSSV (Tùy chọn):</label>
+                  <input type="text" id="adminCustomerMssv" class="form-input font-mono" placeholder="Để trống nếu tự nhận">
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary btn-block btn-glow" id="btnSubmitCreateKey">
+                ⚡ TẠO KEY & GHI VÀO GOOGLE SHEETS
+              </button>
+            </form>
+
+            <!-- Hộp kết quả tạo Key thành công -->
+            <div id="adminCreateResult" class="admin-result-box" style="display: none; margin-top: 16px;">
+              <div class="result-badge-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="badge badge-success">✅ ĐÃ TẠO XONG</span>
+                <span class="font-mono text-accent" id="resKeyName" style="font-size: 1.1rem; font-weight: 700;">IUH-30D-XXXX</span>
+              </div>
+              <div class="result-details" id="resKeyDetails" style="font-size: 0.85rem; color: #94a3b8; margin: 6px 0;">Hạn dùng: 2026-11-15</div>
+              <textarea id="resKeyMessage" class="form-input font-mono" rows="6" readonly style="font-size: 0.82rem; line-height: 1.4; resize: none; margin-bottom: 8px;"></textarea>
+              <button type="button" class="btn btn-accent btn-block btn-sm" id="btnCopyCustomerMessage">
+                📋 Sao chép tin nhắn gửi cho khách
+              </button>
+            </div>
+          </div>
+
+          <!-- Cột Phải: Danh Sách Key Đang Có Trên Google Sheet -->
+          <div class="admin-list-col">
+            <div class="list-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h4 class="admin-subheading" style="margin: 0;">📊 Danh Sách Key Trên Sheet (<span id="adminKeyCount">0</span> key)</h4>
+              <span class="badge badge-purple">Tự động đồng bộ</span>
+            </div>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Mã Key</th>
+                    <th>Khách Hàng</th>
+                    <th>MSSV</th>
+                    <th>Hạn Dùng</th>
+                    <th>Trạng Thái</th>
+                    <th>Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyAdminKeys">
+                  <tr><td colspan="6" class="text-center text-muted" style="padding: 20px;">Bấm "Đồng bộ Google Sheets" để tải danh sách...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Main Workspace Two Columns -->
     <main class="main-grid">
       <!-- Left Controls Column -->
