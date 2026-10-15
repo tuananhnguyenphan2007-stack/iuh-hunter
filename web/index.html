@@ -118,8 +118,8 @@
                   </select>
                 </div>
                 <div class="form-group" style="flex: 1;">
-                  <label for="adminCustomerMssv">MSSV (Tùy chọn):</label>
-                  <input type="text" id="adminCustomerMssv" class="form-input font-mono" placeholder="Để trống nếu tự nhận">
+                  <label for="adminCustomerMssv">MSSV của khách:</label>
+                  <input type="text" id="adminCustomerMssv" class="form-input font-mono" placeholder="Nhập MSSV (hoặc để trống)">
                 </div>
               </div>
 
@@ -146,7 +146,7 @@
           <div class="admin-list-col">
             <div class="list-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
               <h4 class="admin-subheading" style="margin: 0;">📊 Danh Sách Key Trên Sheet (<span id="adminKeyCount">0</span> key)</h4>
-              <span class="badge badge-purple">Tự động đồng bộ</span>
+              <span class="badge badge-purple">Khóa theo MSSV</span>
             </div>
             <div class="admin-table-wrap">
               <table class="admin-table">
@@ -154,7 +154,7 @@
                   <tr>
                     <th>Mã Key</th>
                     <th>Khách Hàng</th>
-                    <th>MSSV</th>
+                    <th>MSSV Độc Quyền</th>
                     <th>Hạn Dùng</th>
                     <th>Trạng Thái</th>
                     <th>Thao Tác</th>
@@ -419,9 +419,8 @@
 
         <div class="license-info-box">
           <div class="info-row">
-            <span class="info-label">Mã máy tính (HWID):</span>
-            <span class="info-value font-mono" id="lblHwid">Đang tải...</span>
-            <button type="button" class="btn btn-ghost btn-xs" id="btnCopyHwid" title="Sao chép HWID">📋 Copy</button>
+            <span class="info-label">Cơ chế bản quyền:</span>
+            <span class="info-value text-accent font-semibold">🔒 Khóa theo MSSV (Đa thiết bị)</span>
           </div>
           <div class="info-row">
             <span class="info-label">Trạng thái:</span>
@@ -432,8 +431,8 @@
             <span class="info-value text-green" id="lblLicenseExpiry">--</span>
           </div>
           <div class="info-row" id="rowLicenseMssv" style="display:none;">
-            <span class="info-label">MSSV cấp phép:</span>
-            <span class="info-value font-mono" id="lblLicenseMssv">--</span>
+            <span class="info-label">MSSV sở hữu:</span>
+            <span class="info-value font-mono text-purple" id="lblLicenseMssv">--</span>
           </div>
         </div>
 
@@ -441,6 +440,13 @@
           <div class="form-group">
             <label class="form-label" for="inputLicenseKey">Mã License Key:</label>
             <input type="text" id="inputLicenseKey" class="form-input font-mono" placeholder="Ví dụ: IUH-VIP-XXXX-YYYY" required autocomplete="off">
+          </div>
+          <div class="form-group" id="grpLicenseMssv">
+            <label class="form-label" for="inputLicenseMssv">Mã số sinh viên (MSSV) của bạn:</label>
+            <input type="text" id="inputLicenseMssv" class="form-input font-mono" placeholder="Ví dụ: 20012345" required>
+            <span class="form-hint" style="font-size: 0.76rem; color: #94a3b8; display: block; margin-top: 4px;">
+              💡 <strong>Key gắn liền với MSSV này</strong>. Bạn có thể thoải mái đăng nhập trên nhiều thiết bị (Điện thoại, Laptop, PC...) không giới hạn!
+            </span>
           </div>
           <button type="submit" class="btn btn-primary btn-block btn-glow" id="btnSubmitLicense">
             ⚡ Kích Hoạt Ngay

@@ -381,10 +381,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             action = body.get("action", "")
             key_target = body.get("key", "")
             days = body.get("days", 30)
+            new_mssv = body.get("new_mssv", "")
             res = call_sheets_api(session_mgr.api_url, {
                 "action": action,
                 "key": key_target,
-                "days": days
+                "days": days,
+                "new_mssv": new_mssv
             })
             self.send_json(res)
 

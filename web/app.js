@@ -143,6 +143,7 @@ const elements = {
   btnCloseLicenseModal: document.getElementById('btnCloseLicenseModal'),
   formActivateLicense: document.getElementById('formActivateLicense'),
   inputLicenseKey: document.getElementById('inputLicenseKey'),
+  inputLicenseMssv: document.getElementById('inputLicenseMssv'),
   lblHwid: document.getElementById('lblHwid'),
   btnCopyHwid: document.getElementById('btnCopyHwid'),
   lblLicenseState: document.getElementById('lblLicenseState'),
@@ -405,6 +406,9 @@ let currentLicense = null;
 function openLicenseModal() {
   if (elements.licenseModal) {
     elements.licenseModal.classList.add('active');
+    if (elements.inputLicenseMssv) {
+      elements.inputLicenseMssv.value = appState.userMssv || (elements.inputMssv ? elements.inputMssv.value.trim() : '');
+    }
     if (elements.lblHwid) elements.lblHwid.textContent = getDeviceId();
     checkLicenseStatus();
   }
@@ -530,8 +534,18 @@ async function handleResetLicense() {
 
 async function handleActivateLicense(e) {
   e.preventDefault();
-  const key = elements.inputLicenseKey.value.trim();
+  const key = elements.inputLicenseKey.value.trim().toUpperCase();
   if (!key) return;
+
+  const mssv = (elements.inputLicenseMssv ? elements.inputLicenseMssv.value.trim() : '') ||
+               appState.userMssv ||
+               (elements.inputMssv ? elements.inputMssv.value.trim() : '');
+
+  if (key !== 'IUH-ADMIN-VIP-2026' && !mssv) {
+    alert('Vui lòng nhập Mã số sinh viên (MSSV) để gắn bản quyền với tài khoản của bạn!');
+    if (elements.inputLicenseMssv) elements.inputLicenseMssv.focus();
+    return;
+  }
 
   const submitBtn = document.getElementById('btnSubmitLicense');
   if (submitBtn) {
@@ -548,7 +562,7 @@ async function handleActivateLicense(e) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         key: key,
-        mssv: appState.userMssv || elements.inputMssv.value.trim(),
+        mssv: mssv,
         hwid: getDeviceId()
       }),
       signal: controller.signal
@@ -1023,9 +1037,9 @@ async function fetchAdminKeysList() {
         ? '<span class="badge badge-danger">Đã khóa (Banned)</span>'
         : '<span class="badge badge-success">Đang hoạt động</span>';
 
-      const hwidDisplay = k.hwid 
-        ? `<div class="text-dim" style="font-size: 0.72rem;" title="Mã thiết bị: ${escapeHtml(k.hwid)}">💻 Khóa máy: ${escapeHtml(k.hwid.substring(0, 8))}...</div>` 
-        : '<div class="text-muted" style="font-size: 0.72rem;">Chưa gắn máy</div>';
+      const mssvBadge = k.mssv
+        ? `<span class="badge badge-purple font-mono" style="font-size: 0.85rem; font-weight: 700;">${escapeHtml(k.mssv)}</span>`
+        : '<span class="badge badge-secondary" style="font-size: 0.75rem; color: #94a3b8;">Chưa gắn MSSV</span>';
 
       return `
         <tr>
@@ -1034,15 +1048,13 @@ async function fetchAdminKeysList() {
               <code class="font-mono text-accent" style="font-weight: 700; font-size: 0.88rem;">${escapeHtml(k.key)}</code>
               <button class="btn btn-ghost btn-sm" style="padding: 2px 6px; font-size: 0.75rem;" onclick="copyTextToClipboard('${escapeHtml(k.key)}', 'Đã chép mã Key!')" title="Sao chép Key">📋</button>
             </div>
-            ${hwidDisplay}
+            <div class="text-dim" style="font-size: 0.72rem;">Đa thiết bị</div>
           </td>
           <td>
             <strong>${escapeHtml(k.customer_name || 'Khách hàng')}</strong>
             <div class="text-dim" style="font-size: 0.75rem;">${escapeHtml(k.plan_type || '')}</div>
           </td>
-          <td>
-            ${k.mssv ? `<span class="badge badge-purple">${escapeHtml(k.mssv)}</span>` : '<span class="text-muted">Mọi MSSV</span>'}
-          </td>
+          <td>${mssvBadge}</td>
           <td>
             <span class="font-mono">${escapeHtml(k.expires_at || 'Vĩnh viễn')}</span>
           </td>
@@ -1050,11 +1062,11 @@ async function fetchAdminKeysList() {
           <td>
             <div class="action-btn-group">
               ${isBanned 
-                ? `<button class="btn btn-ghost btn-sm text-green" style="font-size: 0.75rem; padding: 3px 8px;" onclick="window.handleAdminKeyAction('unban', '${escapeHtml(k.key)}')">🔓 Mở khóa</button>`
+                ? `<button class="btn btn-ghost btn-sm text-green" style="font-size: 0.75rem; padding: 3px 8px;" onclick="window.handleAdminKeyAction('unban', '${escapeHtml(k.key)}')">🔓 Mở</button>`
                 : `<button class="btn btn-ghost btn-sm text-danger" style="font-size: 0.75rem; padding: 3px 8px;" onclick="window.handleAdminKeyAction('ban', '${escapeHtml(k.key)}')">🔒 Khóa</button>`
               }
               <button class="btn btn-ghost btn-sm" style="font-size: 0.75rem; padding: 3px 8px;" onclick="window.handleAdminKeyExtend('${escapeHtml(k.key)}')">⏳ +Ngày</button>
-              <button class="btn btn-ghost btn-sm" style="font-size: 0.75rem; padding: 3px 8px;" onclick="window.handleAdminKeyAction('reset_device', '${escapeHtml(k.key)}')" title="Đổi máy mới cho khách">🔄 Đổi máy</button>
+              <button class="btn btn-ghost btn-sm" style="font-size: 0.75rem; padding: 3px 8px;" onclick="window.handleAdminChangeMssv('${escapeHtml(k.key)}', '${escapeHtml(k.mssv || '')}')" title="Đổi hoặc gỡ MSSV cho khách">🔄 Đổi MSSV</button>
             </div>
           </td>
         </tr>
@@ -1130,13 +1142,14 @@ async function handleAdminCreateKey(e) {
         `🔑 License Key: ${generatedKey}`,
         `📦 Gói sử dụng: ${planText}`,
         `⏳ Hạn dùng đến: ${expDate}`,
-        `👤 MSSV áp dụng: ${mssv ? mssv : 'Tự động nhận diện khi kích hoạt'}`,
+        `👤 MSSV áp dụng: ${mssv ? mssv : 'Tự động gắn theo MSSV của bạn khi kích hoạt lần đầu'}`,
+        `📱 Đa thiết bị: Không giới hạn! Bạn có thể dùng trên cả Điện thoại, Laptop, Máy tính cá nhân.`,
         `🌐 Link truy cập Web: ${webUrl}`,
         `━━━━━━━━━━━━━━━━━━━━`,
         `📌 Hướng dẫn kích hoạt:`,
         `1. Mở link Web trên máy tính hoặc điện thoại: ${webUrl}`,
         `2. Bấm vào nút "🔑 Kích hoạt Key" ở góc trên bên phải màn hình.`,
-        `3. Dán mã Key: "${generatedKey}" và bấm "Kích Hoạt Ngay".`,
+        `3. Nhập mã Key: "${generatedKey}" và MSSV của bạn -> Bấm "Kích Hoạt Ngay".`,
         `Chúc bạn săn được thật nhiều slot hoạt động IUH thành công! 🚀`
       ].join('\n');
 
@@ -1234,4 +1247,33 @@ window.handleAdminKeyAction = async function(action, key, days = 30) {
     console.error(err);
   }
 };
+
+window.handleAdminChangeMssv = async function(key, currentMssv) {
+  const promptMsg = currentMssv
+    ? `Key "${key}" hiện đang gắn cố định với MSSV: ${currentMssv}.\n\nNhập MSSV mới (hoặc để trống nếu muốn gỡ để khách tự kích hoạt lại):`
+    : `Nhập MSSV muốn gán cố định cho Key "${key}":`;
+  const input = prompt(promptMsg, currentMssv || '');
+  if (input === null) return;
+  const newMssv = input.trim();
+
+  try {
+    const res = await fetch('/api/admin/action-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'change_mssv', key: key, new_mssv: newMssv })
+    });
+    const data = await res.json();
+    if (data.success) {
+      sfx.playSuccess();
+      alert(`✅ ${data.message || 'Đã cập nhật MSSV thành công!'}`);
+      fetchAdminKeysList();
+    } else {
+      alert(`⚠️ Thất bại: ${data.error || 'Có lỗi xảy ra'}`);
+    }
+  } catch (err) {
+    alert('Lỗi kết nối khi cập nhật MSSV.');
+    console.error(err);
+  }
+};
+
 

@@ -145,10 +145,18 @@ function doGet(e) {
     return createJsonResponse({ success: true, key: key, expires_at: newExpStr, message: "Đã gia hạn thêm " + addDays + " ngày." });
   }
 
-  // --- TÍNH NĂNG 5: RESET THIẾT BỊ (ĐỔI MÁY MỚI) ---
+  // --- TÍNH NĂNG 5: ĐỔI MSSV HOẶC RESET MSSV CHO KEY ---
+  if (action === "reset_mssv" || action === "change_mssv" || action === "doimssv") {
+    var newMssv = (params.new_mssv || "").trim();
+    sheet.getRange(keyRowIndex, 3).setValue(newMssv);
+    var msg = newMssv ? ("Đã đổi MSSV của Key thành: " + newMssv) : "Đã gỡ MSSV. Khách có thể kích hoạt với MSSV mới.";
+    return createJsonResponse({ success: true, key: key, mssv: newMssv, message: msg });
+  }
+
+  // Tương thích ngược: reset_device nếu có
   if (action === "reset_device" || action === "reset_hwid") {
     sheet.getRange(keyRowIndex, 5).setValue("");
-    return createJsonResponse({ success: true, key: key, message: "Đã xóa mã thiết bị cũ. Khách có thể kích hoạt trên máy mới." });
+    return createJsonResponse({ success: true, key: key, message: "Đã xóa ghi chú thiết bị cũ." });
   }
 
   // =========================================================================
@@ -170,35 +178,28 @@ function doGet(e) {
     return createJsonResponse({ valid: false, success: false, error: "License Key đã hết hạn vào ngày " + expiresAt + ". Vui lòng liên hệ gia hạn." });
   }
 
-  // 3. Kiểm tra khóa theo Mã thiết bị (HWID / Device ID)
-  if (savedHwid && savedHwid !== "" && savedHwid !== "ALL") {
-    if (hwid && savedHwid !== hwid) {
-      return createJsonResponse({
-        valid: false,
-        success: false,
-        error: "Key này đã được kích hoạt trên một thiết bị khác! Mỗi key chỉ được phép dùng trên 1 thiết bị duy nhất."
-      });
-    }
-  }
-
-  // 4. Kiểm tra khóa theo MSSV sinh viên
+  // 3. CƠ CHẾ BẢN QUYỀN: GẮN CHẶT VỚI MÃ SỐ SINH VIÊN (MSSV)
+  // Cho phép 1 sinh viên đăng nhập trên NHIỀU THIẾT BỊ (Laptop, Điện thoại, Máy tính...)
+  // Nhưng CHỐNG CHIA SẺ KEY: Người khác với MSSV khác sẽ bị chặn ngay lập tức!
   if (savedMssv && savedMssv !== "" && savedMssv !== "ALL") {
     if (mssv && savedMssv !== mssv) {
       return createJsonResponse({
         valid: false,
         success: false,
-        error: "Key này chỉ được cấp phép cho MSSV: " + savedMssv + ". Tài khoản hiện tại không được phép dùng."
+        error: "Key này đã được cấp quyền duy nhất cho MSSV " + savedMssv + "! Bạn không thể sử dụng cho tài khoản MSSV " + mssv + "."
       });
     }
   }
 
-  // 5. Nếu kích hoạt lần đầu (action = activate): Tự động ghi nhận HWID, MSSV và ngày kích hoạt vào Google Sheet
+  // 4. Khi kích hoạt (action = activate):
+  // Nếu Key chưa gán MSSV -> Tự động gắn vĩnh viễn Key này với MSSV của bạn
   if (action === "activate") {
-    if (!savedHwid && hwid) {
-      sheet.getRange(keyRowIndex, 5).setValue(hwid);
-    }
     if (!savedMssv && mssv) {
       sheet.getRange(keyRowIndex, 3).setValue(mssv);
+      savedMssv = mssv;
+    }
+    if (hwid) {
+      sheet.getRange(keyRowIndex, 5).setValue(hwid);
     }
     var nowFormatted = Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd HH:mm:ss");
     sheet.getRange(keyRowIndex, 8).setValue(nowFormatted);
@@ -212,7 +213,7 @@ function doGet(e) {
     mssv: savedMssv || mssv,
     plan_type: planType,
     expires_at: expiresAt,
-    message: "Bản quyền hợp lệ! Hạn dùng: " + expiresAt
+    message: "Bản quyền hợp lệ! Hạn dùng: " + expiresAt + (savedMssv ? (" (Gắn với MSSV: " + savedMssv + ")") : "")
   });
 }
 

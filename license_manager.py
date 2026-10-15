@@ -184,15 +184,8 @@ class LicenseManager:
                 "error": "Vui lòng kích hoạt License Key để sử dụng tính năng săn slot."
             }
 
-        # Kiểm tra HWID có trùng khớp máy/thiết bị hiện tại không (chống copy sang máy khác)
-        saved_hwid = self.cached_license.get("hwid", "")
-        if saved_hwid and saved_hwid != hwid and saved_hwid != "ALL":
-            return {
-                "is_licensed": False,
-                "hwid": hwid,
-                "status_text": "Thiết bị không khớp (Bị khóa)",
-                "error": "License Key này đã được kích hoạt trên một thiết bị khác."
-            }
+        # Lưu ý: Không khóa theo phần cứng (HWID) nữa để sinh viên có thể dùng trên
+        # nhiều thiết bị (Điện thoại, Laptop, PC...). Bản quyền được bảo vệ bằng MSSV.
 
         # Kiểm tra ngày hết hạn (Expires At)
         expires_at = self.cached_license.get("expires_at", "")
@@ -227,9 +220,9 @@ class LicenseManager:
             return False
 
         # Nếu Key gắn với MSSV cụ thể, kiểm tra MSSV đang đăng nhập
-        licensed_mssv = status.get("mssv", "")
-        if licensed_mssv and licensed_mssv not in ["ALL", ""] and current_mssv:
-            if current_mssv.strip() != licensed_mssv.strip():
+        licensed_mssv = (status.get("mssv") or "").strip()
+        if licensed_mssv and licensed_mssv not in ["ALL", ""]:
+            if not current_mssv or current_mssv.strip() != licensed_mssv:
                 return False
 
         return True
