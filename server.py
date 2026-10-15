@@ -65,16 +65,16 @@ def start_discord_bot_thread():
     bot_token = os.environ.get("DISCORD_BOT_TOKEN") or app_config.get("discord_bot_token", "")
     api_url = app_config.get("license_api_url", "")
     if not bot_token:
-        print("[DISCORD BOT] Chưa thiết lập DISCORD_BOT_TOKEN. Bỏ qua chạy Discord Bot.")
+        print("[DISCORD BOT] Chưa thiết lập biến DISCORD_BOT_TOKEN trên Render. Bỏ qua khởi động Discord Bot.", flush=True)
         return
     try:
         from discord_bot import run_bot
         import threading
         t = threading.Thread(target=run_bot, args=(bot_token, api_url), daemon=True)
         t.start()
-        print("[DISCORD BOT] Đã kích hoạt Discord Admin Bot trong luồng ngầm.")
+        print(f"[DISCORD BOT] Đã khởi động Discord Admin Bot trong luồng ngầm (Token: {bot_token[:10]}...).", flush=True)
     except Exception as e:
-        print(f"[DISCORD BOT] Không thể khởi động Discord Bot: {e}")
+        print(f"[DISCORD BOT] Lỗi khởi động Discord Bot: {e}", flush=True)
 
 start_discord_bot_thread()
 

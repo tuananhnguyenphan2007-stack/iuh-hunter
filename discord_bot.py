@@ -64,9 +64,9 @@ def run_bot(token: str, api_url: str):
 
     @bot.event
     async def on_ready():
-        print(f"============================================================")
-        print(f"  🤖 Discord Admin Bot đã kết nối thành công: {bot.user}")
-        print(f"============================================================")
+        print(f"============================================================", flush=True)
+        print(f"  🤖 Discord Admin Bot đã kết nối thành công: {bot.user}", flush=True)
+        print(f"============================================================", flush=True)
         await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="IUH License Manager"))
 
     # LỆNH: !taokey
@@ -139,7 +139,7 @@ def run_bot(token: str, api_url: str):
     async def cmd_khoakey(ctx, key: str):
         """Khóa khẩn cấp một key: !khoakey <mã_key>"""
         async with ctx.typing():
-            res = call_sheets_api(api_url, {"action": "ban", "key": key.strip().toUpperCase()})
+            res = call_sheets_api(api_url, {"action": "ban", "key": key.strip().upper()})
         if res.get("success"):
             await ctx.send(f"🔒 **Đã khóa thành công License Key:** `{key}` trên Google Sheets!")
         else:
@@ -150,7 +150,7 @@ def run_bot(token: str, api_url: str):
     async def cmd_mokey(ctx, key: str):
         """Mở khóa lại một key: !mokey <mã_key>"""
         async with ctx.typing():
-            res = call_sheets_api(api_url, {"action": "unban", "key": key.strip().toUpperCase()})
+            res = call_sheets_api(api_url, {"action": "unban", "key": key.strip().upper()})
         if res.get("success"):
             await ctx.send(f"🔓 **Đã mở khóa thành công License Key:** `{key}` trên Google Sheets!")
         else:
@@ -161,7 +161,7 @@ def run_bot(token: str, api_url: str):
     async def cmd_giahan(ctx, key: str, days: int = 30):
         """Gia hạn thêm ngày: !giahan <mã_key> <số_ngày>"""
         async with ctx.typing():
-            res = call_sheets_api(api_url, {"action": "extend", "key": key.strip().toUpperCase(), "days": days})
+            res = call_sheets_api(api_url, {"action": "extend", "key": key.strip().upper(), "days": days})
         if res.get("success"):
             await ctx.send(f"🎉 **Đã gia hạn thêm {days} ngày cho Key `{key}`!** Hạn mới: `{res.get('expires_at')}`")
         else:
@@ -172,7 +172,7 @@ def run_bot(token: str, api_url: str):
     async def cmd_resetmay(ctx, key: str):
         """Xóa mã máy cũ để khách đổi sang máy tính mới: !resetmay <mã_key>"""
         async with ctx.typing():
-            res = call_sheets_api(api_url, {"action": "reset_device", "key": key.strip().toUpperCase()})
+            res = call_sheets_api(api_url, {"action": "reset_device", "key": key.strip().upper()})
         if res.get("success"):
             await ctx.send(f"🔄 **Đã xóa mã thiết bị cũ của Key `{key}`.** Khách giờ có thể kích hoạt trên máy mới!")
         else:
@@ -183,7 +183,7 @@ def run_bot(token: str, api_url: str):
     async def cmd_checkkey(ctx, key: str):
         """Kiểm tra trạng thái key: !checkkey <mã_key>"""
         async with ctx.typing():
-            res = call_sheets_api(api_url, {"action": "check", "key": key.strip().toUpperCase()})
+            res = call_sheets_api(api_url, {"action": "check", "key": key.strip().upper()})
         if res.get("valid") or res.get("success"):
             embed = discord.Embed(title=f"🔎 THÔNG TIN KEY: {key.upper()}", color=0x38bdf8)
             embed.add_field(name="Khách hàng", value=res.get("customer_name", "N/A"), inline=True)
@@ -214,4 +214,4 @@ def run_bot(token: str, api_url: str):
         asyncio.set_event_loop(loop)
         loop.run_until_complete(bot.start(token))
     except Exception as e:
-        print(f"[DISCORD BOT] Lỗi chạy bot: {e}")
+        print(f"[DISCORD BOT] Lỗi chạy bot: {e}", flush=True)
