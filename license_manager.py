@@ -22,13 +22,15 @@ DEFAULT_APPS_SCRIPT_URL = ""
 
 
 class LicenseManager:
-    def __init__(self, api_url: Optional[str] = None):
+    def __init__(self, api_url: Optional[str] = None, cache_file: Optional[str] = LICENSE_CACHE_FILE):
         self.api_url = (api_url or "").strip()
+        self.cache_file = cache_file
         self.cached_license: Dict[str, Any] = {}
         self.ssl_context = ssl.create_default_context()
         self.ssl_context.check_hostname = False
         self.ssl_context.verify_mode = ssl.CERT_NONE
-        self._load_cached_license()
+        if self.cache_file:
+            self._load_cached_license()
 
     @staticmethod
     def get_hardware_id() -> str:
@@ -64,9 +66,9 @@ class LicenseManager:
 
     def _load_cached_license(self):
         """Đọc thông tin bản quyền đã lưu trên máy"""
-        if os.path.exists(LICENSE_CACHE_FILE):
+        if self.cache_file and os.path.exists(self.cache_file):
             try:
-                with open(LICENSE_CACHE_FILE, "r", encoding="utf-8") as f:
+                with open(self.cache_file, "r", encoding="utf-8") as f:
                     self.cached_license = json.load(f)
             except Exception:
                 self.cached_license = {}
@@ -74,13 +76,14 @@ class LicenseManager:
     def _save_cached_license(self, data: Dict[str, Any]):
         """Lưu bản quyền vào file để không cần gọi mạng mỗi giây"""
         self.cached_license = data
-        try:
-            with open(LICENSE_CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"Lỗi lưu license.json: {e}")
+        if self.cache_file:
+            try:
+                with open(self.cache_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                print(f"Lỗi lưu license file: {e}")
 
-    def activate_key(self, key: str, mssv: str = "") -> Dict[str, Any]:
+    def activate_key(self, key: str, mssv: str = "", client_hwid: str = "") -> Dict[str, Any]:
         """
         Kích hoạt License Key gửi lên Google Sheets API.
         """
@@ -88,7 +91,7 @@ class LicenseManager:
         if not key:
             return {"success": False, "error": "Vui lòng nhập License Key."}
 
-        hwid = self.get_hardware_id()
+        hwid = client_hwid.strip().upper() if client_hwid else self.get_hardware_id()
 
         # 1. Master Developer Key dành cho bạn (Admin/Chủ tool): Luôn kích hoạt thành công ngay lập tức
         if key == "IUH-ADMIN-VIP-2026" or key.startswith("IUH-DEV-"):
@@ -166,12 +169,12 @@ class LicenseManager:
         except Exception as e:
             return {"success": False, "error": f"Lỗi kết nối máy chủ xác thực Key: {str(e)}"}
 
-    def get_license_status(self) -> Dict[str, Any]:
+    def get_license_status(self, client_hwid: str = "") -> Dict[str, Any]:
         """
         Lấy trạng thái bản quyền hiện tại.
         Kiểm tra thời hạn sử dụng và tính hợp lệ.
         """
-        hwid = self.get_hardware_id()
+        hwid = client_hwid.strip().upper() if client_hwid else self.get_hardware_id()
 
         if not self.cached_license or not self.cached_license.get("is_licensed"):
             return {
@@ -181,13 +184,13 @@ class LicenseManager:
                 "error": "Vui lòng kích hoạt License Key để sử dụng tính năng săn slot."
             }
 
-        # Kiểm tra HWID có trùng khớp máy hiện tại không (chống copy sang máy khác)
+        # Kiểm tra HWID có trùng khớp máy/thiết bị hiện tại không (chống copy sang máy khác)
         saved_hwid = self.cached_license.get("hwid", "")
         if saved_hwid and saved_hwid != hwid and saved_hwid != "ALL":
             return {
                 "is_licensed": False,
                 "hwid": hwid,
-                "status_text": "Mã máy không khớp (Bị khóa)",
+                "status_text": "Thiết bị không khớp (Bị khóa)",
                 "error": "License Key này đã được kích hoạt trên một thiết bị khác."
             }
 
@@ -217,9 +220,9 @@ class LicenseManager:
             "status_text": "🟢 Bản quyền hợp lệ"
         }
 
-    def is_valid_to_run(self, current_mssv: str = "") -> bool:
+    def is_valid_to_run(self, current_mssv: str = "", client_hwid: str = "") -> bool:
         """Kiểm tra nhanh xem bot có đủ điều kiện để bắt đầu săn slot không"""
-        status = self.get_license_status()
+        status = self.get_license_status(client_hwid=client_hwid)
         if not status.get("is_licensed"):
             return False
 

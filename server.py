@@ -1,26 +1,21 @@
 """
-Server: Web API & Static Server phục vụ giao diện quản trị IUH Hunter Bot
-Sử dụng thư viện tiêu chuẩn http.server của Python. Không cần Flask/FastAPI/Node.js.
-Chạy trực tiếp trên cổng 5000 (http://localhost:5000).
+IUH Activity Hunter - Multi-Tenant Web Server
+Phục vụ giao diện Web Dashboard và API xử lý săn slot tự động.
+Hỗ trợ Multi-Tenant SaaS (Mỗi khách hàng truy cập có phiên riêng biệt:
+tài khoản IUH riêng, webhook Discord riêng, bot quét riêng, key bản quyền riêng).
 """
 
-import sys
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
-
 import os
+import sys
 import json
-import mimetypes
-import threading
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import re
+import mimetypes
 from urllib.parse import urlparse, parse_qs
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Dict, Any
 
-from iuh_client import IUHClient
-from discord_notifier import DiscordNotifier
-from scanner import ActivityScanner
-from license_manager import LicenseManager
+from session_manager import SessionManager, SESSIONS_FILE
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
@@ -37,26 +32,18 @@ def load_config() -> Dict[str, Any]:
         "phpsessid": "",
         "license_api_url": ""
     }
+
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                default_config.update(data)
+                saved = json.load(f)
+                default_config.update(saved)
         except Exception as e:
-            print(f"Không thể đọc config.json: {e}")
+            print(f"Lỗi đọc config.json: {e}")
 
-    # Ghi đè bằng biến môi trường (Environment Variables) nếu chạy trên Render/Cloud
-    if os.environ.get("WEBHOOK_URL"):
-        default_config["webhook_url"] = os.environ["WEBHOOK_URL"]
-    if os.environ.get("PHPSESSID"):
-        default_config["phpsessid"] = os.environ["PHPSESSID"]
+    # Ghi đè bởi biến môi trường nếu chạy trên Render/Docker
     if os.environ.get("LICENSE_API_URL"):
         default_config["license_api_url"] = os.environ["LICENSE_API_URL"]
-    if os.environ.get("INTERVAL_SECONDS"):
-        try:
-            default_config["interval_seconds"] = int(os.environ["INTERVAL_SECONDS"])
-        except ValueError:
-            pass
 
     return default_config
 
@@ -69,31 +56,9 @@ def save_config(cfg: Dict[str, Any]):
         print(f"Lỗi lưu config.json: {e}")
 
 
-# Khởi tạo các singleton
+# Khởi tạo quản lý phiên đa người dùng
 app_config = load_config()
-client = IUHClient(phpsessid=app_config.get("phpsessid"))
-notifier = DiscordNotifier(webhook_url=app_config.get("webhook_url"))
-scanner = ActivityScanner(client=client, notifier=notifier)
-license_mgr = LicenseManager(api_url=app_config.get("license_api_url", ""))
-scanner.config.update(app_config)
-
-
-def start_session_keepalive():
-    """Luồng ngầm tự động gửi ping làm mới phiên mỗi 60 giây để session không bao giờ bị hủy"""
-    def worker():
-        while True:
-            time.sleep(60)
-            try:
-                if client.get_current_phpsessid():
-                    client.check_session()
-            except Exception:
-                pass
-
-    t = threading.Thread(target=worker, daemon=True)
-    t.start()
-
-start_session_keepalive()
-
+session_mgr = SessionManager(api_url=app_config.get("license_api_url", ""))
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -103,8 +68,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Session-ID, X-Device-ID")
         self.end_headers()
         self.wfile.write(body)
 
@@ -112,7 +77,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Session-ID, X-Device-ID")
         self.end_headers()
 
     def do_HEAD(self):
@@ -121,6 +86,27 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
+
+    def get_session_info(self):
+        """Trích xuất session_id và device_id của từng người dùng truy cập web"""
+        sid = self.headers.get("X-Session-ID", "").strip()
+        if not sid:
+            cookie_header = self.headers.get("Cookie", "")
+            match = re.search(r'iuh_session_id=([^;]+)', cookie_header)
+            if match:
+                sid = match.group(1).strip()
+        if not sid:
+            sid = "default_user"
+
+        did = self.headers.get("X-Device-ID", "").strip()
+        if not did:
+            cookie_header = self.headers.get("Cookie", "")
+            match = re.search(r'iuh_device_id=([^;]+)', cookie_header)
+            if match:
+                did = match.group(1).strip()
+
+        session = session_mgr.get_or_create(session_id=sid, device_id=did)
+        return sid, did, session
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -176,52 +162,65 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_json({"error": "Unknown POST route"}, 404)
 
     def handle_api_get(self, path: str, query: Dict[str, Any]):
+        sid, did, session = self.get_session_info()
+
         if path == "/api/status":
-            st = scanner.get_status()
-            st["license"] = license_mgr.get_license_status()
-            self.send_json(st)
+            self.send_json(session.get_status())
+
         elif path == "/api/license/status":
-            self.send_json(license_mgr.get_license_status())
+            self.send_json(session.license_mgr.get_license_status(client_hwid=did))
+
         elif path == "/api/captcha":
-            res = client.get_captcha_base64()
+            res = session.client.get_captcha_base64()
             self.send_json(res)
+
         elif path == "/api/session/check":
-            res = client.check_session()
+            res = session.client.check_session()
             self.send_json(res)
+
         elif path == "/api/activities":
-            target = query.get("url", [scanner.config.get("target_url")])[0]
-            res = client.fetch_activities(target)
+            target = query.get("url", [session.config.get("target_url")])[0]
+            res = session.client.fetch_activities(target)
             self.send_json(res)
+
         elif path == "/api/logs":
-            self.send_json({"logs": scanner.logs})
+            self.send_json({"logs": session.scanner.logs})
+
         elif path == "/api/config":
-            cfg_data = dict(scanner.config)
-            cfg_data["license_api_url"] = app_config.get("license_api_url", "")
+            cfg_data = dict(session.config)
+            cfg_data["license_api_url"] = session_mgr.api_url
             self.send_json(cfg_data)
+
         else:
             self.send_json({"error": "API route not found"}, 404)
 
     def handle_api_post(self, path: str, body: Dict[str, Any]):
+        sid, did, session = self.get_session_info()
+
         if path == "/api/login":
             mssv = body.get("mssv", "")
             password = body.get("password", "")
             security_code = body.get("security_code", "")
-            res = client.login(mssv, password, security_code)
+            res = session.client.login(mssv, password, security_code)
             if res.get("success"):
-                scanner.log(f"Đăng nhập thành công tài khoản: {mssv}", "success")
-                app_config["phpsessid"] = client.get_current_phpsessid() or ""
-                save_config(app_config)
+                session.scanner.log(f"Đăng nhập thành công tài khoản: {mssv}", "success")
+                session.config["phpsessid"] = session.client.get_current_phpsessid() or ""
+                session_mgr.save_sessions()
             else:
-                scanner.log(f"Đăng nhập thất bại: {res.get('error')}", "warning")
+                session.scanner.log(f"Đăng nhập thất bại: {res.get('error')}", "warning")
             self.send_json(res)
+
+        elif path == "/api/logout":
+            session_mgr.logout(sid)
+            self.send_json({"success": True, "message": "Đã đăng xuất thành công."})
 
         elif path == "/api/set-cookie":
             phpsessid = body.get("phpsessid", "")
-            client.set_session_cookie(phpsessid)
-            check = client.check_session()
-            scanner.log(f"Đã cập nhật PHPSESSID: {phpsessid[:10]}...", "info")
-            app_config["phpsessid"] = phpsessid
-            save_config(app_config)
+            session.client.set_session_cookie(phpsessid)
+            check = session.client.check_session()
+            session.scanner.log(f"Đã cập nhật PHPSESSID: {phpsessid[:10]}...", "info")
+            session.config["phpsessid"] = phpsessid
+            session_mgr.save_sessions()
             self.send_json({
                 "success": True,
                 "phpsessid": phpsessid,
@@ -230,17 +229,23 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/license/activate":
             key = body.get("key", "")
-            mssv = body.get("mssv", "") or client.user_info.get("mssv", "")
-            res = license_mgr.activate_key(key=key, mssv=mssv)
+            mssv = body.get("mssv", "") or session.client.user_info.get("mssv", "")
+            client_hwid = body.get("hwid") or did
+            res = session.license_mgr.activate_key(key=key, mssv=mssv, client_hwid=client_hwid)
             if res.get("success"):
-                scanner.log(f"Kích hoạt License thành công! Hạn dùng: {res.get('license', {}).get('expires_at')}", "success")
+                session.scanner.log(f"Kích hoạt License thành công! Hạn dùng: {res.get('license', {}).get('expires_at')}", "success")
+                session_mgr.save_sessions()
             else:
-                scanner.log(f"Kích hoạt License thất bại: {res.get('error')}", "warning")
+                session.scanner.log(f"Kích hoạt License thất bại: {res.get('error')}", "warning")
             self.send_json(res)
+
+        elif path == "/api/license/reset":
+            session_mgr.reset_license(sid)
+            self.send_json({"success": True, "message": "Đã hủy kích hoạt key của phiên này."})
 
         elif path == "/api/license/config":
             api_url = body.get("api_url", "")
-            license_mgr.set_api_url(api_url)
+            session_mgr.set_api_url(api_url)
             app_config["license_api_url"] = api_url
             save_config(app_config)
             self.send_json({"success": True, "api_url": api_url})
@@ -248,130 +253,77 @@ class RequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/discord/test":
             webhook_url = body.get("webhook_url")
             if webhook_url:
-                notifier.set_webhook_url(webhook_url)
-                app_config["webhook_url"] = webhook_url
-                save_config(app_config)
-            res = notifier.send_test_message()
+                session.notifier.set_webhook_url(webhook_url)
+                session.config["webhook_url"] = webhook_url
+                session_mgr.save_sessions()
+            res = session.notifier.send_test_message()
             if res.get("success"):
-                scanner.log("Đã gửi tin nhắn thử nghiệm Discord thành công!", "success")
+                session.scanner.log("Đã gửi tin nhắn thử nghiệm Discord thành công!", "success")
             else:
-                scanner.log(f"Lỗi gửi tin Discord: {res.get('error')}", "danger")
+                session.scanner.log(f"Lỗi gửi tin Discord: {res.get('error')}", "danger")
             self.send_json(res)
 
         elif path == "/api/config":
-            scanner.update_config(body)
-            app_config.update(scanner.config)
+            session.update_config(body)
             if "license_api_url" in body:
+                session_mgr.set_api_url(body["license_api_url"])
                 app_config["license_api_url"] = body["license_api_url"]
-                license_mgr.set_api_url(body["license_api_url"])
-            save_config(app_config)
-            self.send_json({"success": True, "config": scanner.config})
+                save_config(app_config)
+            session_mgr.save_sessions()
+            self.send_json({"success": True, "config": session.config})
 
         elif path == "/api/scanner/start":
-            current_mssv = client.user_info.get("mssv", "")
-            if not license_mgr.is_valid_to_run(current_mssv):
-                lic_stat = license_mgr.get_license_status()
+            current_mssv = session.client.user_info.get("mssv", "")
+            if not session.license_mgr.is_valid_to_run(current_mssv, client_hwid=did):
+                lic_stat = session.license_mgr.get_license_status(client_hwid=did)
                 err_msg = lic_stat.get("error") or "Vui lòng kích hoạt License Key để bắt đầu săn slot!"
-                scanner.log(f"Bị chặn: {err_msg}", "warning")
+                session.scanner.log(f"Bị chặn: {err_msg}", "warning")
                 self.send_json({"success": False, "error": err_msg})
                 return
-            res = scanner.start()
+            res = session.scanner.start()
+            session_mgr.save_sessions()
             self.send_json(res)
 
         elif path == "/api/scanner/stop":
-            res = scanner.stop()
+            res = session.scanner.stop()
+            session_mgr.save_sessions()
             self.send_json(res)
 
         elif path == "/api/register":
-            current_mssv = client.user_info.get("mssv", "")
-            if not license_mgr.is_valid_to_run(current_mssv):
+            current_mssv = session.client.user_info.get("mssv", "")
+            if not session.license_mgr.is_valid_to_run(current_mssv, client_hwid=did):
                 self.send_json({"success": False, "error": "Vui lòng kích hoạt License Key để đăng ký hoạt động."})
                 return
             reg_url = body.get("register_url")
             act_id = body.get("activity_id")
-            scanner.log(f"Người dùng gửi yêu cầu đăng ký thủ công cho: {act_id or reg_url}", "info")
-            res = client.register_activity(register_url=reg_url, activity_id=act_id)
+            session.scanner.log(f"Người dùng gửi yêu cầu đăng ký thủ công cho: {act_id or reg_url}", "info")
+            res = session.client.register_activity(register_url=reg_url, activity_id=act_id)
             if res.get("success"):
-                scanner.log(f"Đăng ký thành công: {res.get('message')}", "success")
+                session.scanner.log(f"Đăng ký thành công: {res.get('message')}", "success")
             else:
-                scanner.log(f"Đăng ký thất bại: {res.get('error') or res.get('message')}", "warning")
+                session.scanner.log(f"Đăng ký thất bại: {res.get('error') or res.get('message')}", "warning")
             self.send_json(res)
 
         else:
-            self.send_json({"error": "API route not found"}, 404)
+            self.send_json({"error": "Unknown POST route"}, 404)
 
 
-import webbrowser
-import threading
-
-
-def run_server(initial_port: int = 5000):
-    env_port = os.environ.get("PORT")
-    if env_port:
-        try:
-            initial_port = int(env_port)
-            ports_to_try = [initial_port]
-        except ValueError:
-            ports_to_try = [initial_port, 5001, 5002, 8080, 8888]
-    else:
-        ports_to_try = [initial_port, 5001, 5002, 8080, 8888]
-
-    httpd = None
-    actual_port = initial_port
-
-    for p in ports_to_try:
-        try:
-            server_address = ('0.0.0.0', p)
-            httpd = HTTPServer(server_address, RequestHandler)
-            actual_port = p
-            break
-        except OSError as e:
-            if p == ports_to_try[-1]:
-                print(f"[LỖI] Không thể mở cổng nào trong danh sách: {ports_to_try}. Chi tiết: {e}")
-                return
-            continue
-
-    local_ip = '127.0.0.1'
-    try:
-        import socket
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('8.8.8.8', 80))
-        local_ip = s.getsockname()[0]
-        s.close()
-    except Exception:
-        pass
-
-    url = f"http://127.0.0.1:{actual_port}"
-    lan_url = f"http://{local_ip}:{actual_port}"
-
-    print("=" * 65)
-    print("🚀 IUH ACTIVITY HUNTER - WEB DASHBOARD SERVER ĐÃ SẴN SÀNG!")
-    print("=" * 65)
-    print(f"👉 Máy của bạn:              {url}")
-    print(f"👉 Bạn bè chung mạng Wi-Fi:   {lan_url}")
-    print(f"👉 Cổng hoạt động IUH:       https://doantn.iuh.edu.vn")
-    print("👉 Nhấn Ctrl + C để dừng server.")
-    print("=" * 65)
-
-    # Tự động mở trình duyệt sau khi server đã lắng nghe ổn định
-    def open_browser():
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
-
-    threading.Timer(0.8, open_browser).start()
-
+def run(port: int = 5000):
+    server_address = ("", port)
+    httpd = HTTPServer(server_address, RequestHandler)
+    print(f"============================================================")
+    print(f"  ⚡ IUH Activity Hunter - Multi-Tenant Web SaaS Server")
+    print(f"  🌐 URL: http://localhost:{port}")
+    print(f"  🔐 License System: {'Google Sheets Connected' if session_mgr.api_url else 'Ready'}")
+    print(f"============================================================")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\nĐang dừng server...")
-        scanner.stop()
+        print("\nĐang tắt server...")
+        session_mgr.save_sessions()
         httpd.server_close()
-        print("Đã tắt server.")
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    run_server(port)
-
+    run(port=port)

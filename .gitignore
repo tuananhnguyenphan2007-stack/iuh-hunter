@@ -8,4 +8,6 @@ git_setup.bat
 push.bat
 push_interactive.bat
 license.json
+sessions.json
+
 

@@ -1,6 +1,55 @@
 /**
- * IUH Activity Hunter - Client Application Logic
+ * IUH Activity Hunter - Client Application Logic (Multi-Tenant Web SaaS)
  */
+
+// Session & Device Management for Multi-Tenant Web SaaS
+function getSessionId() {
+  let sid = localStorage.getItem('iuh_session_id');
+  if (!sid) {
+    sid = 'sess_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+    localStorage.setItem('iuh_session_id', sid);
+  }
+  document.cookie = `iuh_session_id=${sid}; path=/; max-age=31536000; SameSite=Lax`;
+  return sid;
+}
+
+function getDeviceId() {
+  let did = localStorage.getItem('iuh_device_id');
+  if (!did) {
+    const raw = [
+      navigator.userAgent,
+      screen.width + 'x' + screen.height,
+      screen.colorDepth,
+      navigator.language,
+      Math.random()
+    ].join('|');
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) {
+      hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+      hash |= 0;
+    }
+    const hex1 = Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
+    const hex2 = Math.floor(Math.random() * 0xFFFFFFFF).toString(16).toUpperCase().padStart(8, '0');
+    did = (hex1 + hex2).substring(0, 16);
+    localStorage.setItem('iuh_device_id', did);
+  }
+  document.cookie = `iuh_device_id=${did}; path=/; max-age=31536000; SameSite=Lax`;
+  return did;
+}
+
+// Global fetch wrapper to isolate each student's session and browser
+const originalFetch = window.fetch;
+window.fetch = function(url, options = {}) {
+  options.headers = options.headers || {};
+  if (options.headers instanceof Headers) {
+    if (!options.headers.has('X-Session-ID')) options.headers.set('X-Session-ID', getSessionId());
+    if (!options.headers.has('X-Device-ID')) options.headers.set('X-Device-ID', getDeviceId());
+  } else {
+    options.headers['X-Session-ID'] = getSessionId();
+    options.headers['X-Device-ID'] = getDeviceId();
+  }
+  return originalFetch.call(this, url, options);
+};
 
 // Audio Synthesizer for alerts
 class SoundEffects {
@@ -110,6 +159,8 @@ const elements = {
   statRegisteredCount: document.getElementById('statRegisteredCount'),
 
   btnCheckSession: document.getElementById('btnCheckSession'),
+  btnLogoutSession: document.getElementById('btnLogoutSession'),
+  btnResetLicense: document.getElementById('btnResetLicense'),
   tabLoginBtn: document.getElementById('tabLoginBtn'),
   tabCookieBtn: document.getElementById('tabCookieBtn'),
   tabLogin: document.getElementById('tabLogin'),
@@ -298,7 +349,12 @@ function setupEventListeners() {
     elements.terminalWindow.innerHTML = '<div class="terminal-line text-muted">[SYSTEM] Đã dọn dẹp nhật ký log.</div>';
   });
 
-  // License Modal Events
+  if (elements.btnLogoutSession) {
+    elements.btnLogoutSession.addEventListener('click', handleLogout);
+  }
+  if (elements.btnResetLicense) {
+    elements.btnResetLicense.addEventListener('click', handleResetLicense);
+  }
   if (elements.licenseStatusPill) {
     elements.licenseStatusPill.addEventListener('click', openLicenseModal);
   }
@@ -324,6 +380,7 @@ let currentLicense = null;
 function openLicenseModal() {
   if (elements.licenseModal) {
     elements.licenseModal.classList.add('active');
+    if (elements.lblHwid) elements.lblHwid.textContent = getDeviceId();
     checkLicenseStatus();
   }
 }
@@ -335,17 +392,17 @@ function closeLicenseModal() {
 }
 
 function copyHwid() {
-  const hwid = elements.lblHwid ? elements.lblHwid.textContent.trim() : '';
+  const hwid = elements.lblHwid ? elements.lblHwid.textContent.trim() : getDeviceId();
   if (hwid && hwid !== 'Đang tải...') {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(hwid).then(() => {
         elements.btnCopyHwid.textContent = '✅ Đã copy!';
         setTimeout(() => { if (elements.btnCopyHwid) elements.btnCopyHwid.textContent = '📋 Copy'; }, 2000);
       }).catch(() => {
-        prompt('Mã máy tính (HWID) của bạn:', hwid);
+        prompt('Mã thiết bị (Device ID) của bạn:', hwid);
       });
     } else {
-      prompt('Mã máy tính (HWID) của bạn:', hwid);
+      prompt('Mã thiết bị (Device ID) của bạn:', hwid);
     }
   }
 }
@@ -365,7 +422,7 @@ function updateLicenseUI(lic) {
   if (!lic) return;
   currentLicense = lic;
 
-  if (elements.lblHwid) elements.lblHwid.textContent = lic.hwid || 'N/A';
+  if (elements.lblHwid) elements.lblHwid.textContent = lic.hwid || getDeviceId();
 
   if (lic.is_licensed) {
     if (elements.licenseStatusPill) {
@@ -385,6 +442,9 @@ function updateLicenseUI(lic) {
       elements.rowLicenseMssv.style.display = 'flex';
       elements.lblLicenseMssv.textContent = lic.mssv;
     }
+    if (elements.btnResetLicense) {
+      elements.btnResetLicense.style.display = 'inline-block';
+    }
   } else {
     if (elements.licenseStatusPill) {
       elements.licenseStatusPill.classList.remove('is-active');
@@ -397,6 +457,35 @@ function updateLicenseUI(lic) {
     }
     if (elements.rowLicenseExpiry) elements.rowLicenseExpiry.style.display = 'none';
     if (elements.rowLicenseMssv) elements.rowLicenseMssv.style.display = 'none';
+    if (elements.btnResetLicense) elements.btnResetLicense.style.display = 'none';
+  }
+}
+
+async function handleLogout() {
+  if (!confirm('Bạn có chắc muốn đăng xuất tài khoản IUH khỏi phiên làm việc này?')) return;
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+    appState.isLoggedIn = false;
+    appState.userMssv = '';
+    elements.inputPassword.value = '';
+    elements.inputCaptcha.value = '';
+    elements.inputCookie.value = '';
+    updateSessionUI(false);
+    fetchCaptcha();
+    alert('Đã đăng xuất tài khoản IUH thành công!');
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function handleResetLicense() {
+  if (!confirm('Bạn có chắc muốn hủy bản quyền trên trình duyệt này để thử nghiệm lại?')) return;
+  try {
+    await fetch('/api/license/reset', { method: 'POST' });
+    await checkLicenseStatus();
+    alert('Đã hủy bản quyền của phiên này! Trình duyệt đã trở về trạng thái chưa kích hoạt.');
+  } catch (e) {
+    console.error(e);
   }
 }
 
@@ -420,7 +509,8 @@ async function handleActivateLicense(e) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         key: key,
-        mssv: appState.userMssv || elements.inputMssv.value.trim()
+        mssv: appState.userMssv || elements.inputMssv.value.trim(),
+        hwid: getDeviceId()
       }),
       signal: controller.signal
     });
@@ -547,11 +637,13 @@ function updateSessionUI(isLoggedIn, mssvText) {
     elements.statSession.style.color = '#10b981';
     elements.statSessionUser.textContent = mssvText ? `${mssvText}` : 'Đã kết nối';
     elements.headerStatusDot.classList.add('online');
+    if (elements.btnLogoutSession) elements.btnLogoutSession.style.display = 'inline-flex';
   } else {
     elements.statSession.textContent = 'Chưa đăng nhập 🔴';
     elements.statSession.style.color = '#f43f5e';
     elements.statSessionUser.textContent = 'Cần đăng nhập';
     elements.headerStatusDot.classList.remove('online');
+    if (elements.btnLogoutSession) elements.btnLogoutSession.style.display = 'none';
   }
 }
 

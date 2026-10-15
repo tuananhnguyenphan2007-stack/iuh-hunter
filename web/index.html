@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=2.2">
+  <link rel="stylesheet" href="style.css?v=3.0">
   <link rel="shortcut icon" href="https://doantn.iuh.edu.vn/templates/images/icon.ico">
 </head>
 <body>
@@ -96,9 +96,14 @@
             <div class="card-title">
               <span class="title-icon">🔐</span> Tài Khoản Sinh Viên IUH
             </div>
-            <button class="btn btn-ghost btn-sm" id="btnCheckSession" title="Kiểm tra xem cookie còn sống không">
-              <span class="btn-icon">↻</span> Kiểm tra phiên
-            </button>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn btn-ghost btn-sm" id="btnCheckSession" title="Kiểm tra xem cookie còn sống không">
+                <span class="btn-icon">↻</span> Kiểm tra phiên
+              </button>
+              <button class="btn btn-ghost btn-sm text-danger" id="btnLogoutSession" style="display:none;" title="Đăng xuất tài khoản">
+                🚪 Đăng xuất
+              </button>
+            </div>
           </div>
 
           <div class="card-body">
@@ -357,6 +362,12 @@
           </button>
         </form>
 
+        <div style="text-align: center; margin-top: 10px;">
+          <button type="button" class="btn btn-ghost btn-xs text-danger" id="btnResetLicense" style="display:none;" title="Xóa bản quyền để thử nghiệm lại">
+            🔄 Hủy kích hoạt Key trên trình duyệt này
+          </button>
+        </div>
+
         <div class="license-footer-note">
           <span>Chưa có Key bản quyền? Liên hệ Admin để nhận Key dùng thử hoặc mua gói:</span>
           <div class="contact-badges">
@@ -368,6 +379,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=2.2"></script>
+  <script src="app.js?v=3.0"></script>
 </body>
 </html>
