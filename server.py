@@ -61,6 +61,24 @@ app_config = load_config()
 session_mgr = SessionManager(api_url=app_config.get("license_api_url", ""))
 
 
+def start_discord_bot_thread():
+    bot_token = os.environ.get("DISCORD_BOT_TOKEN") or app_config.get("discord_bot_token", "")
+    api_url = app_config.get("license_api_url", "")
+    if not bot_token:
+        print("[DISCORD BOT] Chưa thiết lập DISCORD_BOT_TOKEN. Bỏ qua chạy Discord Bot.")
+        return
+    try:
+        from discord_bot import run_bot
+        import threading
+        t = threading.Thread(target=run_bot, args=(bot_token, api_url), daemon=True)
+        t.start()
+        print("[DISCORD BOT] Đã kích hoạt Discord Admin Bot trong luồng ngầm.")
+    except Exception as e:
+        print(f"[DISCORD BOT] Không thể khởi động Discord Bot: {e}")
+
+start_discord_bot_thread()
+
+
 class RequestHandler(BaseHTTPRequestHandler):
     def send_json(self, data: Any, status: int = 200):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
